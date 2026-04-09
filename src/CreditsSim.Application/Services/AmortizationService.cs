@@ -15,7 +15,6 @@ public static class AmortizationService
         var monthlyRate = annualRate / 12m / 100m;
         var schedule = new List<ScheduleRow>(termMonths);
 
-        // Cuota fija (Sistema Francés)
         decimal fixedPayment;
         if (monthlyRate == 0)
         {
@@ -46,14 +45,15 @@ public static class AmortizationService
             balance -= principal;
             if (balance < 0) balance = 0;
 
-            schedule.Add(new ScheduleRow(
-                Month: month,
-                Payment: fixedPayment + insurance,
-                Principal: principal,
-                Interest: interest,
-                Insurance: insurance,
-                Balance: Math.Round(balance, 2)
-            ));
+            schedule.Add(new ScheduleRow
+            {
+                Month = month,
+                Payment = fixedPayment + insurance,
+                Principal = principal,
+                Interest = interest,
+                Insurance = insurance,
+                Balance = Math.Round(balance, 2)
+            });
         }
 
         return schedule;

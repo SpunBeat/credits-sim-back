@@ -41,14 +41,15 @@ public class CreateSimulationHandler : IRequestHandler<CreateSimulationCommand, 
 
         await _repository.AddAsync(entity, ct);
 
-        return new SimulationResponse(
-            entity.Id,
-            entity.Amount,
-            entity.TermMonths,
-            entity.AnnualRate,
-            entity.InstallmentType,
-            schedule,
-            entity.CreatedAt
-        );
+        return new SimulationResponse
+        {
+            Id = entity.Id,
+            Amount = entity.Amount,
+            TermMonths = entity.TermMonths,
+            AnnualRate = entity.AnnualRate,
+            InstallmentType = entity.InstallmentType,
+            Schedule = schedule,
+            CreatedAt = entity.CreatedAt
+        };
     }
 }

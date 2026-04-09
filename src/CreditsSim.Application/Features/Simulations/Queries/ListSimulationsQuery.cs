@@ -29,23 +29,25 @@ public class ListSimulationsHandler : IRequestHandler<ListSimulationsQuery, Page
             ascending,
             ct);
 
-        var items = entities.Select(e => new SimulationSummary(
-            e.Id,
-            e.Amount,
-            e.TermMonths,
-            e.AnnualRate,
-            e.InstallmentType,
-            e.CreatedAt
-        )).ToList();
+        var items = entities.Select(e => new SimulationSummary
+        {
+            Id = e.Id,
+            Amount = e.Amount,
+            TermMonths = e.TermMonths,
+            AnnualRate = e.AnnualRate,
+            InstallmentType = e.InstallmentType,
+            CreatedAt = e.CreatedAt
+        }).ToList();
 
         var totalPages = (int)Math.Ceiling(totalCount / (double)request.PageSize);
 
-        return new PagedResponse<SimulationSummary>(
-            items,
-            totalCount,
-            request.PageNumber,
-            request.PageSize,
-            totalPages
-        );
+        return new PagedResponse<SimulationSummary>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            PageNumber = request.PageNumber,
+            PageSize = request.PageSize,
+            TotalPages = totalPages
+        };
     }
 }

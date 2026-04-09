@@ -1,10 +1,25 @@
 namespace CreditsSim.Application.DTOs;
 
-public record SimulationSummary(
-    Guid Id,
-    decimal Amount,
-    int TermMonths,
-    decimal AnnualRate,
-    string InstallmentType,
-    DateTime CreatedAt
-);
+/// <summary>
+/// Resumen de una simulación (sin cronograma). Usado en listados paginados.
+/// </summary>
+public record SimulationSummary
+{
+    /// <summary>Identificador único de la simulación.</summary>
+    public Guid Id { get; init; }
+
+    /// <summary>Monto del crédito simulado.</summary>
+    public decimal Amount { get; init; }
+
+    /// <summary>Plazo en meses.</summary>
+    public int TermMonths { get; init; }
+
+    /// <summary>Tasa de interés anual (%).</summary>
+    public decimal AnnualRate { get; init; }
+
+    /// <summary>Tipo de cuota aplicado.</summary>
+    public string InstallmentType { get; init; } = string.Empty;
+
+    /// <summary>Fecha y hora de creación (UTC).</summary>
+    public DateTime CreatedAt { get; init; }
+}

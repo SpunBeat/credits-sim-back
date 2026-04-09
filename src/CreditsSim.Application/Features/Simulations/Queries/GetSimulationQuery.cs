@@ -23,14 +23,15 @@ public class GetSimulationHandler : IRequestHandler<GetSimulationQuery, Simulati
 
         var schedule = JsonSerializer.Deserialize<List<ScheduleRow>>(entity.ScheduleJson) ?? [];
 
-        return new SimulationResponse(
-            entity.Id,
-            entity.Amount,
-            entity.TermMonths,
-            entity.AnnualRate,
-            entity.InstallmentType,
-            schedule,
-            entity.CreatedAt
-        );
+        return new SimulationResponse
+        {
+            Id = entity.Id,
+            Amount = entity.Amount,
+            TermMonths = entity.TermMonths,
+            AnnualRate = entity.AnnualRate,
+            InstallmentType = entity.InstallmentType,
+            Schedule = schedule,
+            CreatedAt = entity.CreatedAt
+        };
     }
 }

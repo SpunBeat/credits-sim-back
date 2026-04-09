@@ -26,4 +26,26 @@ public class SimulationRepository : ISimulationRepository
             .AsNoTracking()
             .FirstOrDefaultAsync(s => s.Id == id, ct);
     }
+
+    public async Task<(List<SimulationHistory> Items, int TotalCount)> GetPagedAsync(
+        int pageNumber,
+        int pageSize,
+        bool ascending = false,
+        CancellationToken ct = default)
+    {
+        var query = _context.SimulationHistories.AsNoTracking();
+
+        var totalCount = await query.CountAsync(ct);
+
+        query = ascending
+            ? query.OrderBy(s => s.CreatedAt)
+            : query.OrderByDescending(s => s.CreatedAt);
+
+        var items = await query
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return (items, totalCount);
+    }
 }

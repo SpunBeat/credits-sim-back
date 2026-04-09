@@ -47,4 +47,21 @@ public class SimulationsController : ControllerBase
         var result = await _mediator.Send(new GetSimulationQuery(id), ct);
         return result is null ? NotFound() : Ok(result);
     }
+
+    /// <summary>
+    /// Lista el historial de simulaciones con paginación.
+    /// </summary>
+    [HttpGet("simulations")]
+    [ProducesResponseType(typeof(PagedResponse<SimulationSummary>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> List(
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string sortOrder = "desc",
+        CancellationToken ct = default)
+    {
+        var query = new ListSimulationsQuery(pageNumber, pageSize, sortOrder);
+        var result = await _mediator.Send(query, ct);
+        return Ok(result);
+    }
 }

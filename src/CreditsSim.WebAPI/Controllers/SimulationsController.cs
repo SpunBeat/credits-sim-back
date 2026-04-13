@@ -66,15 +66,23 @@ public class SimulationsController : ControllerBase
     }
 
     /// <summary>
-    /// Lista el historial de simulaciones con paginación.
+    /// Lista el historial de simulaciones con paginación y filtros opcionales (AND).
     /// </summary>
     /// <param name="pageNumber">Número de página (1-based). Por defecto: 1.</param>
     /// <param name="pageSize">Cantidad de elementos por página (1-100). Por defecto: 10.</param>
     /// <param name="sortOrder">Ordenamiento por fecha de creación: "desc" (más recientes primero) o "asc". Por defecto: desc.</param>
+    /// <param name="amountMin">Monto mínimo (inclusive).</param>
+    /// <param name="amountMax">Monto máximo (inclusive).</param>
+    /// <param name="termMonths">Plazo exacto en meses.</param>
+    /// <param name="annualRateMin">Tasa anual mínima (%), inclusive.</param>
+    /// <param name="annualRateMax">Tasa anual máxima (%), inclusive.</param>
+    /// <param name="installmentType">Tipo de cuota (p. ej. FIXED).</param>
+    /// <param name="createdFrom">Creado en o después de esta fecha/hora (UTC).</param>
+    /// <param name="createdTo">Creado en o antes de esta fecha/hora (UTC).</param>
     /// <param name="ct">Token de cancelación.</param>
     /// <returns>Lista paginada de simulaciones.</returns>
     /// <response code="200">Listado paginado.</response>
-    /// <response code="400">Parámetros de paginación inválidos.</response>
+    /// <response code="400">Parámetros de paginación o filtro inválidos.</response>
     [HttpGet("simulations")]
     [SwaggerOperation(OperationId = "listSimulations")]
     [ProducesResponseType(typeof(PagedResponse<SimulationSummary>), StatusCodes.Status200OK)]
@@ -83,9 +91,28 @@ public class SimulationsController : ControllerBase
         [FromQuery] int pageNumber = 1,
         [FromQuery] int pageSize = 10,
         [FromQuery] string sortOrder = "desc",
+        [FromQuery] decimal? amountMin = null,
+        [FromQuery] decimal? amountMax = null,
+        [FromQuery] int? termMonths = null,
+        [FromQuery] decimal? annualRateMin = null,
+        [FromQuery] decimal? annualRateMax = null,
+        [FromQuery] string? installmentType = null,
+        [FromQuery] DateTime? createdFrom = null,
+        [FromQuery] DateTime? createdTo = null,
         CancellationToken ct = default)
     {
-        var query = new ListSimulationsQuery(pageNumber, pageSize, sortOrder);
+        var query = new ListSimulationsQuery(
+            pageNumber,
+            pageSize,
+            sortOrder,
+            amountMin,
+            amountMax,
+            termMonths,
+            annualRateMin,
+            annualRateMax,
+            string.IsNullOrWhiteSpace(installmentType) ? null : installmentType.Trim(),
+            createdFrom,
+            createdTo);
         var result = await _mediator.Send(query, ct);
         return Ok(result);
     }

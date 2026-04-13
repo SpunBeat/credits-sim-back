@@ -1,5 +1,7 @@
 using CreditsSim.Domain.Entities;
 using CreditsSim.Domain.Interfaces;
+using CreditsSim.Domain.Query;
+using CreditsSim.Infrastructure.Persistence.Specifications;
 using Microsoft.EntityFrameworkCore;
 
 namespace CreditsSim.Infrastructure.Persistence;
@@ -31,9 +33,12 @@ public class SimulationRepository : ISimulationRepository
         int pageNumber,
         int pageSize,
         bool ascending = false,
+        SimulationListFilter? filter = null,
         CancellationToken ct = default)
     {
-        var query = _context.SimulationHistories.AsNoTracking();
+        var query = _context.SimulationHistories
+            .AsNoTracking()
+            .ApplySimulationFilters(filter);
 
         var totalCount = await query.CountAsync(ct);
 

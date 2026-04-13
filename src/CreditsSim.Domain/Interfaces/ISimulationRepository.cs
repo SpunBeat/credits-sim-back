@@ -1,4 +1,5 @@
 using CreditsSim.Domain.Entities;
+using CreditsSim.Domain.Query;
 
 namespace CreditsSim.Domain.Interfaces;
 
@@ -10,5 +11,6 @@ public interface ISimulationRepository
         int pageNumber,
         int pageSize,
         bool ascending = false,
+        SimulationListFilter? filter = null,
         CancellationToken ct = default);
 }

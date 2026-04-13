@@ -3,6 +3,7 @@ using CreditsSim.Application.Features.Simulations.Commands;
 using CreditsSim.Application.Features.Simulations.Queries;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using Swashbuckle.AspNetCore.Annotations;
 
 namespace CreditsSim.WebAPI.Controllers;
 
@@ -30,6 +31,7 @@ public class SimulationsController : ControllerBase
     /// <response code="201">Simulación creada exitosamente.</response>
     /// <response code="400">Datos de entrada inválidos (ver detalle de errores).</response>
     [HttpPost("simulation")]
+    [SwaggerOperation(OperationId = "createSimulation")]
     [ProducesResponseType(typeof(SimulationResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ValidationErrorResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] SimulationRequest request, CancellationToken ct)
@@ -54,6 +56,7 @@ public class SimulationsController : ControllerBase
     /// <response code="200">Simulación encontrada.</response>
     /// <response code="404">No se encontró una simulación con el ID proporcionado.</response>
     [HttpGet("simulations/{id:guid}")]
+    [SwaggerOperation(OperationId = "getSimulationById")]
     [ProducesResponseType(typeof(SimulationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
@@ -73,6 +76,7 @@ public class SimulationsController : ControllerBase
     /// <response code="200">Listado paginado.</response>
     /// <response code="400">Parámetros de paginación inválidos.</response>
     [HttpGet("simulations")]
+    [SwaggerOperation(OperationId = "listSimulations")]
     [ProducesResponseType(typeof(PagedResponse<SimulationSummary>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationErrorResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> List(

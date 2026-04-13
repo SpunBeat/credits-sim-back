@@ -4,6 +4,7 @@ using CreditsSim.Application;
 using CreditsSim.Infrastructure;
 using CreditsSim.Infrastructure.Persistence;
 using CreditsSim.WebAPI.Middleware;
+using CreditsSim.WebAPI.Swagger;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 
@@ -49,6 +50,12 @@ builder.Services.AddSwaggerGen(options =>
     var appXml = Path.Combine(AppContext.BaseDirectory, "CreditsSim.Application.xml");
     if (File.Exists(appXml))
         options.IncludeXmlComments(appXml);
+
+    // Enable [SwaggerOperation] annotations
+    options.EnableAnnotations();
+
+    // Non-nullable C# properties → required in OpenAPI schema
+    options.SchemaFilter<RequireNonNullableSchemaFilter>();
 
     // Enums as strings in the schema
     options.UseInlineDefinitionsForEnums();

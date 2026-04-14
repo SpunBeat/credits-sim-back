@@ -32,6 +32,7 @@ builder.Services.AddControllers(options =>
 
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
+builder.Services.AddResponseCaching();
 
 // ── Rate Limiting ─────────────────────────────────────────────────
 builder.Services.AddRateLimiter(options =>
@@ -142,6 +143,7 @@ using (var scope = app.Services.CreateScope())
 // ── Middleware pipeline ───────────────────────────────────────────
 app.UseExceptionHandler();
 app.UseCors();
+app.UseResponseCaching();
 app.UseRateLimiter();
 
 if (app.Environment.IsDevelopment())

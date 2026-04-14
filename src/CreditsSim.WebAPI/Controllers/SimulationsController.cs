@@ -87,6 +87,11 @@ public class SimulationsController : ControllerBase
     /// <response code="400">Parámetros de paginación o filtro inválidos.</response>
     [HttpGet("simulations")]
     [SwaggerOperation(OperationId = "listSimulations")]
+    [ResponseCache(Duration = 30, Location = ResponseCacheLocation.Client,
+        VaryByQueryKeys = ["pageNumber", "pageSize", "sortOrder",
+            "amountMin", "amountMax", "termMonths",
+            "annualRateMin", "annualRateMax", "installmentType",
+            "createdFrom", "createdTo"])]
     [ProducesResponseType(typeof(List<SimulationSummary>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationErrorResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> List(

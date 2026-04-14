@@ -68,10 +68,34 @@ public class SimulationsController : ControllerBase
     }
 
     /// <summary>
-    /// Lista el historial de simulaciones con paginación basada en cursor y filtros opcionales.
+    /// Elimina una simulación por su ID.
+    /// </summary>
+    /// <param name="id">Identificador único (GUID) de la simulación a eliminar.</param>
+    /// <param name="ct">Token de cancelación.</param>
+    /// <returns>204 si se eliminó correctamente.</returns>
+    /// <response code="204">Simulación eliminada exitosamente.</response>
+    /// <response code="404">No se encontró una simulación con el ID proporcionado.</response>
+    /// <remarks>
+    /// El historial listado tiene cache client-side de 30s (Cache-Control: private, max-age=30).
+    /// Tras eliminar un registro, el listado puede mostrar el item eliminado durante ese periodo
+    /// hasta que el cache expire (consistencia eventual de 30s).
+    /// </remarks>
+    [HttpDelete("simulations/{id:guid}")]
+    [SwaggerOperation(OperationId = "deleteSimulation")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        var deleted = await _mediator.Send(new DeleteSimulationCommand(id), ct);
+        return deleted ? NoContent() : NotFound();
+    }
+
+    /// <summary>
+    /// Lista el historial de simulaciones con paginación basada en cursor, ordenamiento y filtros opcionales.
     /// </summary>
     /// <param name="pageSize">Cantidad de elementos por página (1-100). Por defecto: 10.</param>
-    /// <param name="sortOrder">Ordenamiento por fecha de creación: "desc" o "asc". Por defecto: desc.</param>
+    /// <param name="sortBy">Columna de ordenamiento: createdAt (default), amount, termMonths, annualRate, installmentType.</param>
+    /// <param name="sortOrder">Dirección del ordenamiento: "desc" (default) o "asc".</param>
     /// <param name="cursorCreatedAt">Timestamp del último elemento de la página anterior (cursor).</param>
     /// <param name="cursorId">ID del último elemento de la página anterior (desempate del cursor).</param>
     /// <param name="amountMin">Monto mínimo (inclusive).</param>
@@ -83,13 +107,13 @@ public class SimulationsController : ControllerBase
     /// <param name="createdFrom">Creado en o después de esta fecha/hora (UTC).</param>
     /// <param name="createdTo">Creado en o antes de esta fecha/hora (UTC).</param>
     /// <param name="ct">Token de cancelación.</param>
-    /// <returns>Lista paginada de simulaciones con cursores para la siguiente página.</returns>
+    /// <returns>Lista de simulaciones con cursores para la siguiente página en headers.</returns>
     /// <response code="200">Listado con cursores en headers.</response>
     /// <response code="400">Parámetros inválidos.</response>
     [HttpGet("simulations")]
     [SwaggerOperation(OperationId = "listSimulations")]
     [ResponseCache(Duration = 30, Location = ResponseCacheLocation.Client,
-        VaryByQueryKeys = ["pageSize", "sortOrder", "cursorCreatedAt", "cursorId",
+        VaryByQueryKeys = ["pageSize", "sortBy", "sortOrder", "cursorCreatedAt", "cursorId",
             "amountMin", "amountMax", "termMonths",
             "annualRateMin", "annualRateMax", "installmentType",
             "createdFrom", "createdTo"])]
@@ -97,6 +121,7 @@ public class SimulationsController : ControllerBase
     [ProducesResponseType(typeof(ValidationErrorResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> List(
         [FromQuery] int pageSize = 10,
+        [FromQuery] string sortBy = "createdAt",
         [FromQuery] string sortOrder = "desc",
         [FromQuery] DateTime? cursorCreatedAt = null,
         [FromQuery] Guid? cursorId = null,
@@ -112,6 +137,7 @@ public class SimulationsController : ControllerBase
     {
         var query = new ListSimulationsQuery(
             pageSize,
+            sortBy,
             sortOrder,
             cursorCreatedAt,
             cursorId,

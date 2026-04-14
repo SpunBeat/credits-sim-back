@@ -7,6 +7,7 @@ namespace CreditsSim.Application.Features.Simulations.Queries;
 
 public record ListSimulationsQuery(
     int PageSize = 10,
+    string SortBy = "createdAt",
     string SortOrder = "desc",
     DateTime? CursorCreatedAt = null,
     Guid? CursorId = null,
@@ -53,12 +54,12 @@ public class ListSimulationsHandler : IRequestHandler<ListSimulationsQuery, Curs
         var (entities, hasNextPage) = await _repository.GetCursorPagedAsync(
             request.PageSize,
             ascending,
+            request.SortBy,
             request.CursorCreatedAt,
             request.CursorId,
             filter,
             ct);
 
-        // Optional total count (only on first page — no cursor = first request)
         int? totalCount = null;
         if (!request.CursorCreatedAt.HasValue)
         {

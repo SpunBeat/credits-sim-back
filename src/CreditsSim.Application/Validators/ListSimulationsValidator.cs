@@ -5,16 +5,24 @@ namespace CreditsSim.Application.Validators;
 
 public class ListSimulationsValidator : AbstractValidator<ListSimulationsQuery>
 {
+    private static readonly HashSet<string> AllowedSortColumns = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "createdAt", "amount", "termMonths", "annualRate", "installmentType"
+    };
+
     public ListSimulationsValidator()
     {
         RuleFor(x => x.PageSize)
             .InclusiveBetween(1, 100).WithMessage("El tamaño de pagina debe estar entre 1 y 100.");
 
+        RuleFor(x => x.SortBy)
+            .Must(s => AllowedSortColumns.Contains(s))
+            .WithMessage($"sortBy debe ser uno de: {string.Join(", ", AllowedSortColumns)}.");
+
         RuleFor(x => x.SortOrder)
             .Must(s => s is "asc" or "desc")
             .WithMessage("El orden debe ser 'asc' o 'desc'.");
 
-        // Cursor: both must be provided together or neither
         When(x => x.CursorCreatedAt.HasValue || x.CursorId.HasValue, () =>
         {
             RuleFor(x => x.CursorCreatedAt)

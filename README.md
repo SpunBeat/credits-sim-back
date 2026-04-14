@@ -84,6 +84,19 @@ POST /api/simulation
 GET /api/simulations/{id}
 ```
 
+### Eliminar simulacion
+
+```
+DELETE /api/simulations/{id}
+```
+
+| Status | Descripcion |
+|---|---|
+| 204 No Content | Simulacion eliminada exitosamente |
+| 404 Not Found | No se encontro simulacion con ese ID |
+
+> **Nota sobre cache:** El listado tiene `Cache-Control: private, max-age=30`. Tras eliminar un registro, el listado puede mostrar el item eliminado durante hasta 30 segundos hasta que el cache del browser expire (consistencia eventual).
+
 ### Listar simulaciones (cursor-based pagination)
 
 ```
@@ -95,6 +108,7 @@ GET /api/simulations?pageSize=10&sortOrder=desc
 | Parametro | Tipo | Descripcion |
 |---|---|---|
 | `pageSize` | int | Elementos por pagina (1-100, default 10) |
+| `sortBy` | string | Columna: `createdAt` (default), `amount`, `termMonths`, `annualRate`, `installmentType` |
 | `sortOrder` | string | `desc` (default) o `asc` |
 | `cursorCreatedAt` | DateTime | Timestamp del ultimo item de la pagina anterior |
 | `cursorId` | Guid | ID del ultimo item de la pagina anterior (desempate) |

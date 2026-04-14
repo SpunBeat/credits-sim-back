@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using CreditsSim.Domain.Entities;
 using CreditsSim.Domain.Interfaces;
 using CreditsSim.Domain.Query;
@@ -9,6 +10,15 @@ namespace CreditsSim.Infrastructure.Persistence;
 public class SimulationRepository : ISimulationRepository
 {
     private readonly AppDbContext _context;
+
+    private static readonly Dictionary<string, Expression<Func<SimulationHistory, object>>> SortColumns = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["createdAt"] = s => s.CreatedAt,
+        ["amount"] = s => s.Amount,
+        ["termMonths"] = s => s.TermMonths,
+        ["annualRate"] = s => s.AnnualRate,
+        ["installmentType"] = s => s.InstallmentType,
+    };
 
     public SimulationRepository(AppDbContext context)
     {
@@ -29,9 +39,19 @@ public class SimulationRepository : ISimulationRepository
             .FirstOrDefaultAsync(s => s.Id == id, ct);
     }
 
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
+    {
+        var rows = await _context.SimulationHistories
+            .Where(s => s.Id == id)
+            .ExecuteDeleteAsync(ct);
+
+        return rows > 0;
+    }
+
     public async Task<(List<SimulationHistory> Items, bool HasNextPage)> GetCursorPagedAsync(
         int pageSize,
         bool ascending = false,
+        string sortBy = "createdAt",
         DateTime? cursorCreatedAt = null,
         Guid? cursorId = null,
         SimulationListFilter? filter = null,
@@ -41,31 +61,31 @@ public class SimulationRepository : ISimulationRepository
             .AsNoTracking()
             .ApplySimulationFilters(filter);
 
-        // Apply cursor condition (keyset pagination)
+        // Cursor condition (always on CreatedAt+Id regardless of sortBy)
         if (cursorCreatedAt.HasValue && cursorId.HasValue)
         {
             if (ascending)
             {
-                // Next page ascending: createdAt > cursor OR (createdAt == cursor AND id > cursorId)
                 query = query.Where(s =>
                     s.CreatedAt > cursorCreatedAt.Value ||
                     (s.CreatedAt == cursorCreatedAt.Value && s.Id > cursorId.Value));
             }
             else
             {
-                // Next page descending: createdAt < cursor OR (createdAt == cursor AND id < cursorId)
                 query = query.Where(s =>
                     s.CreatedAt < cursorCreatedAt.Value ||
                     (s.CreatedAt == cursorCreatedAt.Value && s.Id < cursorId.Value));
             }
         }
 
-        // Order by (CreatedAt, Id) — consistent with the composite index
-        query = ascending
-            ? query.OrderBy(s => s.CreatedAt).ThenBy(s => s.Id)
-            : query.OrderByDescending(s => s.CreatedAt).ThenByDescending(s => s.Id);
+        // Dynamic sort by requested column, then tiebreaker on (CreatedAt, Id)
+        var sortExpr = SortColumns.GetValueOrDefault(sortBy)
+                       ?? SortColumns["createdAt"];
 
-        // Fetch one extra row to detect if there's a next page
+        query = ascending
+            ? query.OrderBy(sortExpr).ThenBy(s => s.CreatedAt).ThenBy(s => s.Id)
+            : query.OrderByDescending(sortExpr).ThenByDescending(s => s.CreatedAt).ThenByDescending(s => s.Id);
+
         var rows = await query
             .Take(pageSize + 1)
             .ToListAsync(ct);
@@ -73,7 +93,7 @@ public class SimulationRepository : ISimulationRepository
         var hasNextPage = rows.Count > pageSize;
         if (hasNextPage)
         {
-            rows.RemoveAt(rows.Count - 1); // Remove the extra sentinel row
+            rows.RemoveAt(rows.Count - 1);
         }
 
         return (rows, hasNextPage);

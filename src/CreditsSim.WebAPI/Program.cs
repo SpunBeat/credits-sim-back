@@ -5,6 +5,7 @@ using System.Threading.RateLimiting;
 using CreditsSim.Application;
 using CreditsSim.Infrastructure;
 using CreditsSim.Infrastructure.Persistence;
+using CreditsSim.WebAPI.Filters;
 using CreditsSim.WebAPI.Middleware;
 using CreditsSim.WebAPI.Swagger;
 using Microsoft.AspNetCore.RateLimiting;
@@ -18,7 +19,10 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
 // ── API + JSON serialization ──────────────────────────────────────
-builder.Services.AddControllers()
+builder.Services.AddControllers(options =>
+    {
+        options.Filters.Add<PaginationHeaderFilter>();
+    })
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
@@ -119,7 +123,11 @@ builder.Services.AddSwaggerGen(options =>
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
-        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+        policy
+            .AllowAnyOrigin()
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .WithExposedHeaders(PaginationHeaders.All));
 });
 
 var app = builder.Build();

@@ -6,9 +6,10 @@ using MediatR;
 namespace CreditsSim.Application.Features.Simulations.Queries;
 
 public record ListSimulationsQuery(
-    int PageNumber = 1,
     int PageSize = 10,
     string SortOrder = "desc",
+    DateTime? CursorCreatedAt = null,
+    Guid? CursorId = null,
     decimal? AmountMin = null,
     decimal? AmountMax = null,
     int? TermMonths = null,
@@ -17,9 +18,9 @@ public record ListSimulationsQuery(
     string? InstallmentType = null,
     DateTime? CreatedFrom = null,
     DateTime? CreatedTo = null
-) : IRequest<PagedResponse<SimulationSummary>>;
+) : IRequest<CursorPagedResponse<SimulationSummary>>;
 
-public class ListSimulationsHandler : IRequestHandler<ListSimulationsQuery, PagedResponse<SimulationSummary>>
+public class ListSimulationsHandler : IRequestHandler<ListSimulationsQuery, CursorPagedResponse<SimulationSummary>>
 {
     private readonly ISimulationRepository _repository;
 
@@ -28,7 +29,7 @@ public class ListSimulationsHandler : IRequestHandler<ListSimulationsQuery, Page
         _repository = repository;
     }
 
-    public async Task<PagedResponse<SimulationSummary>> Handle(ListSimulationsQuery request, CancellationToken ct)
+    public async Task<CursorPagedResponse<SimulationSummary>> Handle(ListSimulationsQuery request, CancellationToken ct)
     {
         var ascending = string.Equals(request.SortOrder, "asc", StringComparison.OrdinalIgnoreCase);
 
@@ -49,12 +50,20 @@ public class ListSimulationsHandler : IRequestHandler<ListSimulationsQuery, Page
                 request.CreatedTo);
         }
 
-        var (entities, totalCount) = await _repository.GetPagedAsync(
-            request.PageNumber,
+        var (entities, hasNextPage) = await _repository.GetCursorPagedAsync(
             request.PageSize,
             ascending,
+            request.CursorCreatedAt,
+            request.CursorId,
             filter,
             ct);
+
+        // Optional total count (only on first page — no cursor = first request)
+        int? totalCount = null;
+        if (!request.CursorCreatedAt.HasValue)
+        {
+            totalCount = await _repository.CountAsync(filter, ct);
+        }
 
         var items = entities.Select(e => new SimulationSummary
         {
@@ -66,15 +75,16 @@ public class ListSimulationsHandler : IRequestHandler<ListSimulationsQuery, Page
             CreatedAt = e.CreatedAt
         }).ToList();
 
-        var totalPages = (int)Math.Ceiling(totalCount / (double)request.PageSize);
+        var lastItem = entities.LastOrDefault();
 
-        return new PagedResponse<SimulationSummary>
+        return new CursorPagedResponse<SimulationSummary>
         {
             Items = items,
-            TotalCount = totalCount,
-            PageNumber = request.PageNumber,
             PageSize = request.PageSize,
-            TotalPages = totalPages
+            HasNextPage = hasNextPage,
+            NextCursorCreatedAt = lastItem?.CreatedAt,
+            NextCursorId = lastItem?.Id,
+            TotalCount = totalCount,
         };
     }
 }

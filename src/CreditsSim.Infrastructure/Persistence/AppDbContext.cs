@@ -22,6 +22,11 @@ public class AppDbContext : DbContext
             entity.Property(e => e.InstallmentType).HasColumnName("installment_type").HasMaxLength(20);
             entity.Property(e => e.ScheduleJson).HasColumnName("schedule_json").HasColumnType("jsonb");
             entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+
+            // Composite index for cursor-based pagination (CreatedAt DESC, Id DESC)
+            entity.HasIndex(e => new { e.CreatedAt, e.Id })
+                .HasDatabaseName("ix_simulation_history_created_at_id")
+                .IsDescending(true, true);
         });
     }
 }

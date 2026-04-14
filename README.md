@@ -1,6 +1,6 @@
 # Credits Simulator API
 
-Web API en .NET 8 para simulación de créditos personales con sistema de amortización francés (cuotas constantes).
+Web API en .NET 8 para simulacion de creditos personales con sistema de amortizacion frances (cuotas constantes).
 
 ## Requisitos previos
 
@@ -22,7 +22,7 @@ cd credits-sim-back
 docker compose up -d
 ```
 
-Esto inicia un contenedor PostgreSQL 16 en `localhost:5432` con las credenciales por defecto (`postgres/postgres`).
+Inicia un contenedor PostgreSQL 16 en `localhost:5432` con credenciales por defecto (`postgres/postgres`).
 
 ### 3. Ejecutar la API
 
@@ -30,17 +30,15 @@ Esto inicia un contenedor PostgreSQL 16 en `localhost:5432` con las credenciales
 dotnet run --project src/CreditsSim.WebAPI
 ```
 
-La migración de base de datos se aplica automáticamente al iniciar la aplicación.
+La migracion se aplica automaticamente al iniciar. La API estara disponible en `http://localhost:5087`.
 
-La API estará disponible en `http://localhost:5087`.
+### 4. Swagger
 
-### 4. Abrir Swagger
-
-Navega a [http://localhost:5087/swagger](http://localhost:5087/swagger) para explorar y probar los endpoints.
+Navega a [http://localhost:5087/swagger](http://localhost:5087/swagger) para explorar los endpoints.
 
 ## Endpoints
 
-### Crear simulación
+### Crear simulacion
 
 ```
 POST /api/simulation
@@ -80,33 +78,92 @@ POST /api/simulation
 }
 ```
 
-### Consultar simulación
+### Consultar simulacion
 
 ```
 GET /api/simulations/{id}
 ```
 
-## Contrato OpenAPI
-
-El archivo de especificación se genera automáticamente y está disponible en:
+### Listar simulaciones (cursor-based pagination)
 
 ```
-http://localhost:5087/swagger/v1/swagger.json
+GET /api/simulations?pageSize=10&sortOrder=desc
 ```
 
-## Estructura del proyecto
+**Parametros de cursor (para pagina siguiente):**
+
+| Parametro | Tipo | Descripcion |
+|---|---|---|
+| `pageSize` | int | Elementos por pagina (1-100, default 10) |
+| `sortOrder` | string | `desc` (default) o `asc` |
+| `cursorCreatedAt` | DateTime | Timestamp del ultimo item de la pagina anterior |
+| `cursorId` | Guid | ID del ultimo item de la pagina anterior (desempate) |
+
+**Filtros opcionales (AND):**
+
+| Parametro | Tipo | Descripcion |
+|---|---|---|
+| `amountMin` | decimal | Monto minimo (inclusive) |
+| `amountMax` | decimal | Monto maximo (inclusive) |
+| `termMonths` | int | Plazo exacto en meses |
+| `annualRateMin` | decimal | Tasa minima (%) |
+| `annualRateMax` | decimal | Tasa maxima (%) |
+| `installmentType` | string | Tipo de cuota (FIXED) |
+| `createdFrom` | DateTime | Creado desde (UTC) |
+| `createdTo` | DateTime | Creado hasta (UTC) |
+
+**Respuesta (200 OK):**
+
+```
+Headers:
+  X-Total-Count: 42          (solo en primera pagina)
+  X-Page-Size: 10
+  X-Has-Next-Page: true
+  X-Next-Cursor-CreatedAt: 2026-04-09T21:06:57.5667060Z
+  X-Next-Cursor-Id: 96acfe26-3347-4ea0-a1d0-0606ce1fb48a
+  Cache-Control: private,max-age=30
+
+Body:
+  [{ ... }, { ... }]          (array de SimulationSummary)
+```
+
+**Flujo de paginacion:**
+
+```
+1. Primera pagina:
+   GET /api/simulations?pageSize=10
+
+2. Segunda pagina (usando cursores del header):
+   GET /api/simulations?pageSize=10&cursorCreatedAt=2026-04-09T21:06:57Z&cursorId=96acfe26-...
+
+3. Siguiente pagina: repetir con nuevos cursores del header
+4. Ultima pagina: X-Has-Next-Page: false
+```
+
+## Arquitectura
 
 ```
 src/
-├── CreditsSim.Domain/          # Entidades e interfaces
-├── CreditsSim.Application/     # CQRS, DTOs, validación, lógica financiera
-├── CreditsSim.Infrastructure/  # EF Core, PostgreSQL, repositorios
-└── CreditsSim.WebAPI/          # Controllers, middleware, configuración
+├── CreditsSim.Domain/            # Entidades, interfaces, query objects
+├── CreditsSim.Application/       # CQRS (MediatR), DTOs, validacion, amortizacion
+├── CreditsSim.Infrastructure/    # EF Core, PostgreSQL, repositorios, specifications
+└── CreditsSim.WebAPI/            # Controllers, filters, middleware, Swagger
 ```
 
-## Configuración
+### Patrones
 
-La cadena de conexión se encuentra en `src/CreditsSim.WebAPI/appsettings.json`:
+- **Clean Architecture** con dependencias hacia adentro
+- **CQRS** via MediatR (commands/queries separados)
+- **Cursor-based pagination** con indice compuesto `(created_at DESC, id DESC)`
+- **Pagination headers** via `PaginationHeaderFilter` (ActionFilter automatico)
+- **Specification pattern** para filtros de busqueda
+- **FluentValidation** con pipeline behavior
+- **Rate limiting** nativo de .NET 8 (FixedWindow, 10 req/min por IP)
+- **Response caching** client-side (30s, `private`)
+
+## Configuracion
+
+La cadena de conexion se encuentra en `src/CreditsSim.WebAPI/appsettings.json`:
 
 ```json
 {
@@ -116,14 +173,23 @@ La cadena de conexión se encuentra en `src/CreditsSim.WebAPI/appsettings.json`:
 }
 ```
 
+## Health check
+
+```
+GET /health
+```
+
+Exento de rate limiting. Retorna `{ "status": "healthy" }`.
+
+## Contrato OpenAPI
+
+```
+http://localhost:5087/swagger/v1/swagger.json
+```
+
 ## Detener los servicios
 
 ```bash
-docker compose down
-```
-
-Para eliminar también los datos persistidos:
-
-```bash
-docker compose down -v
+docker compose down       # mantiene datos
+docker compose down -v    # elimina datos
 ```

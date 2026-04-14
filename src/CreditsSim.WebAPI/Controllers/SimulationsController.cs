@@ -68,11 +68,12 @@ public class SimulationsController : ControllerBase
     }
 
     /// <summary>
-    /// Lista el historial de simulaciones con paginación y filtros opcionales (AND).
+    /// Lista el historial de simulaciones con paginación basada en cursor y filtros opcionales.
     /// </summary>
-    /// <param name="pageNumber">Número de página (1-based). Por defecto: 1.</param>
     /// <param name="pageSize">Cantidad de elementos por página (1-100). Por defecto: 10.</param>
-    /// <param name="sortOrder">Ordenamiento por fecha de creación: "desc" (más recientes primero) o "asc". Por defecto: desc.</param>
+    /// <param name="sortOrder">Ordenamiento por fecha de creación: "desc" o "asc". Por defecto: desc.</param>
+    /// <param name="cursorCreatedAt">Timestamp del último elemento de la página anterior (cursor).</param>
+    /// <param name="cursorId">ID del último elemento de la página anterior (desempate del cursor).</param>
     /// <param name="amountMin">Monto mínimo (inclusive).</param>
     /// <param name="amountMax">Monto máximo (inclusive).</param>
     /// <param name="termMonths">Plazo exacto en meses.</param>
@@ -82,22 +83,23 @@ public class SimulationsController : ControllerBase
     /// <param name="createdFrom">Creado en o después de esta fecha/hora (UTC).</param>
     /// <param name="createdTo">Creado en o antes de esta fecha/hora (UTC).</param>
     /// <param name="ct">Token de cancelación.</param>
-    /// <returns>Lista paginada de simulaciones.</returns>
-    /// <response code="200">Listado paginado.</response>
-    /// <response code="400">Parámetros de paginación o filtro inválidos.</response>
+    /// <returns>Lista paginada de simulaciones con cursores para la siguiente página.</returns>
+    /// <response code="200">Listado con cursores en headers.</response>
+    /// <response code="400">Parámetros inválidos.</response>
     [HttpGet("simulations")]
     [SwaggerOperation(OperationId = "listSimulations")]
     [ResponseCache(Duration = 30, Location = ResponseCacheLocation.Client,
-        VaryByQueryKeys = ["pageNumber", "pageSize", "sortOrder",
+        VaryByQueryKeys = ["pageSize", "sortOrder", "cursorCreatedAt", "cursorId",
             "amountMin", "amountMax", "termMonths",
             "annualRateMin", "annualRateMax", "installmentType",
             "createdFrom", "createdTo"])]
     [ProducesResponseType(typeof(List<SimulationSummary>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationErrorResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> List(
-        [FromQuery] int pageNumber = 1,
         [FromQuery] int pageSize = 10,
         [FromQuery] string sortOrder = "desc",
+        [FromQuery] DateTime? cursorCreatedAt = null,
+        [FromQuery] Guid? cursorId = null,
         [FromQuery] decimal? amountMin = null,
         [FromQuery] decimal? amountMax = null,
         [FromQuery] int? termMonths = null,
@@ -109,9 +111,10 @@ public class SimulationsController : ControllerBase
         CancellationToken ct = default)
     {
         var query = new ListSimulationsQuery(
-            pageNumber,
             pageSize,
             sortOrder,
+            cursorCreatedAt,
+            cursorId,
             amountMin,
             amountMax,
             termMonths,

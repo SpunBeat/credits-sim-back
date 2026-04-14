@@ -7,15 +7,21 @@ public class ListSimulationsValidator : AbstractValidator<ListSimulationsQuery>
 {
     public ListSimulationsValidator()
     {
-        RuleFor(x => x.PageNumber)
-            .GreaterThanOrEqualTo(1).WithMessage("El numero de pagina debe ser al menos 1.");
-
         RuleFor(x => x.PageSize)
             .InclusiveBetween(1, 100).WithMessage("El tamaño de pagina debe estar entre 1 y 100.");
 
         RuleFor(x => x.SortOrder)
             .Must(s => s is "asc" or "desc")
             .WithMessage("El orden debe ser 'asc' o 'desc'.");
+
+        // Cursor: both must be provided together or neither
+        When(x => x.CursorCreatedAt.HasValue || x.CursorId.HasValue, () =>
+        {
+            RuleFor(x => x.CursorCreatedAt)
+                .NotNull().WithMessage("cursorCreatedAt es requerido cuando se usa cursorId.");
+            RuleFor(x => x.CursorId)
+                .NotNull().WithMessage("cursorId es requerido cuando se usa cursorCreatedAt.");
+        });
 
         When(x => x.AmountMin.HasValue && x.AmountMax.HasValue, () =>
         {

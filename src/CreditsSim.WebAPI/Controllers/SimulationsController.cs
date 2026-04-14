@@ -3,6 +3,7 @@ using CreditsSim.Application.Features.Simulations.Commands;
 using CreditsSim.Application.Features.Simulations.Queries;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Swashbuckle.AspNetCore.Annotations;
 
 namespace CreditsSim.WebAPI.Controllers;
@@ -13,6 +14,7 @@ namespace CreditsSim.WebAPI.Controllers;
 [ApiController]
 [Route("api")]
 [Produces("application/json")]
+[EnableRateLimiting("SimulationsPolicy")]
 public class SimulationsController : ControllerBase
 {
     private readonly IMediator _mediator;

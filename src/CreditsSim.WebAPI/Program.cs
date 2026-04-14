@@ -1,10 +1,13 @@
 using System.Reflection;
+using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using CreditsSim.Application;
 using CreditsSim.Infrastructure;
 using CreditsSim.Infrastructure.Persistence;
 using CreditsSim.WebAPI.Middleware;
 using CreditsSim.WebAPI.Swagger;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 
@@ -18,13 +21,56 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
-        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
 
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
+
+// ── Rate Limiting ─────────────────────────────────────────────────
+builder.Services.AddRateLimiter(options =>
+{
+    // Partitioned by client IP — FixedWindow: 10 req/min, queue 2
+    options.AddPolicy("SimulationsPolicy", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 2,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            }));
+
+    // Custom 429 response
+    options.OnRejected = async (ctx, ct) =>
+    {
+        ctx.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        ctx.HttpContext.Response.ContentType = "application/problem+json";
+
+        var retryAfter = ctx.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retry)
+            ? retry
+            : TimeSpan.FromMinutes(1);
+
+        ctx.HttpContext.Response.Headers.RetryAfter = ((int)retryAfter.TotalSeconds).ToString();
+
+        var problem = new
+        {
+            type = "https://tools.ietf.org/html/rfc6585#section-4",
+            title = "Too Many Requests",
+            status = 429,
+            detail = $"Se excedio el limite de peticiones. Intenta de nuevo en {(int)retryAfter.TotalSeconds} segundos.",
+        };
+
+        await ctx.HttpContext.Response.WriteAsync(
+            JsonSerializer.Serialize(problem, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            }), ct);
+    };
+});
 
 // ── Swagger / OpenAPI ─────────────────────────────────────────────
 builder.Services.AddEndpointsApiExplorer();
@@ -88,6 +134,7 @@ using (var scope = app.Services.CreateScope())
 // ── Middleware pipeline ───────────────────────────────────────────
 app.UseExceptionHandler();
 app.UseCors();
+app.UseRateLimiter();
 
 if (app.Environment.IsDevelopment())
 {
@@ -103,6 +150,10 @@ if (app.Environment.IsDevelopment())
         c.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.List);
     });
 }
+
+// Health check — exempt from rate limiting
+app.MapGet("/health", () => Results.Ok(new { status = "healthy" }))
+    .DisableRateLimiting();
 
 app.MapControllers();
 app.Run();

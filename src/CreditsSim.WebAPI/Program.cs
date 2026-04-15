@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using Microsoft.SemanticKernel;
+using CreditsSim.WebAPI.Plugins;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -88,6 +89,7 @@ if (string.IsNullOrWhiteSpace(geminiApiKey))
 
 var kernelBuilder = builder.Services.AddKernel();
 kernelBuilder.AddGoogleAIGeminiChatCompletion(geminiModel, geminiApiKey);
+kernelBuilder.Plugins.AddFromType<SimulationPlugin>();
 
 // ── Swagger / OpenAPI ─────────────────────────────────────────────
 builder.Services.AddEndpointsApiExplorer();

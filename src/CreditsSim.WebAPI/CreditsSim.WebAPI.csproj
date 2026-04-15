@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
     <ProjectReference Include="..\CreditsSim.Application\CreditsSim.Application.csproj" />
@@ -22,6 +22,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591;SKEXP0070</NoWarn>
+    <UserSecretsId>b239e4a3-0a75-4a46-b661-cfe2a2720ccb</UserSecretsId>
   </PropertyGroup>
 
 </Project>

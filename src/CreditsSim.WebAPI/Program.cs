@@ -51,6 +51,18 @@ builder.Services.AddRateLimiter(options =>
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
             }));
 
+    // Assistant: 20 req/min per IP (LLM calls are expensive)
+    options.AddPolicy("AssistantPolicy", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 2,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            }));
+
     // Custom 429 response
     options.OnRejected = async (ctx, ct) =>
     {

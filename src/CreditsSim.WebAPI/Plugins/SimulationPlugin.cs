@@ -1,35 +1,36 @@
 using System.ComponentModel;
-using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using CreditsSim.Application.DTOs;
 using CreditsSim.Application.Services;
 using CreditsSim.Domain.Entities;
 using CreditsSim.Domain.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
 
 namespace CreditsSim.WebAPI.Plugins;
 
 /// <summary>
 /// Semantic Kernel plugin that exposes credit simulation tools to the LLM.
-/// Each method returns human-readable text (not JSON) so the LLM can
-/// relay it naturally to the user.
+/// Uses IServiceScopeFactory to resolve scoped ISimulationRepository per call.
 /// </summary>
 public class SimulationPlugin
 {
-    private readonly ISimulationRepository _repo;
+    private readonly IServiceScopeFactory _scopeFactory;
 
-    public SimulationPlugin(ISimulationRepository repo)
+    public SimulationPlugin(IServiceScopeFactory scopeFactory)
     {
-        _repo = repo;
+        _scopeFactory = scopeFactory;
     }
+
+    private ISimulationRepository GetRepo(IServiceScope scope) =>
+        scope.ServiceProvider.GetRequiredService<ISimulationRepository>();
 
     // ── Create ────────────────────────────────────────────────────
 
     [KernelFunction("create_simulation")]
     [Description("Crea una nueva simulación de crédito personal con cuotas fijas (sistema francés). " +
-                 "Recibe monto, plazo en meses y tasa de interés anual en porcentaje. " +
-                 "Devuelve el resumen con cuota mensual, total a pagar y total de intereses.")]
+                 "Recibe monto, plazo en meses y tasa de interés anual en porcentaje.")]
     public async Task<string> CreateSimulationAsync(
         [Description("Monto del crédito en USD (entre 1 y 10,000,000)")] decimal amount,
         [Description("Plazo en meses (entre 1 y 360)")] int termMonths,
@@ -57,7 +58,8 @@ public class SimulationPlugin
                 CreatedAt = DateTime.UtcNow
             };
 
-            await _repo.AddAsync(entity);
+            using var scope = _scopeFactory.CreateScope();
+            await GetRepo(scope).AddAsync(entity);
 
             var totalPaid = schedule.Sum(r => r.Payment);
             var totalInterest = schedule.Sum(r => r.Interest);
@@ -83,8 +85,7 @@ public class SimulationPlugin
     // ── Get by ID ─────────────────────────────────────────────────
 
     [KernelFunction("get_simulation")]
-    [Description("Obtiene el detalle completo de una simulación existente por su ID (GUID). " +
-                 "Incluye el cronograma de pagos mes a mes.")]
+    [Description("Obtiene el detalle completo de una simulación existente por su ID (GUID), incluyendo el cronograma de pagos.")]
     public async Task<string> GetSimulationAsync(
         [Description("ID (GUID) de la simulación")] string id)
     {
@@ -93,7 +94,8 @@ public class SimulationPlugin
             if (!Guid.TryParse(id, out var guid))
                 return $"El ID '{id}' no es un GUID válido.";
 
-            var entity = await _repo.GetByIdAsync(guid);
+            using var scope = _scopeFactory.CreateScope();
+            var entity = await GetRepo(scope).GetByIdAsync(guid);
             if (entity is null)
                 return $"No encontré una simulación con ID {id}.";
 
@@ -107,7 +109,6 @@ public class SimulationPlugin
             sb.AppendLine($"Monto: ${entity.Amount:N2}");
             sb.AppendLine($"Plazo: {entity.TermMonths} meses");
             sb.AppendLine($"Tasa anual: {entity.AnnualRate}%");
-            sb.AppendLine($"Tipo de cuota: {entity.InstallmentType}");
             sb.AppendLine($"Cuota mensual: ${monthlyPayment:N2}");
             sb.AppendLine($"Total a pagar: ${totalPaid:N2}");
             sb.AppendLine($"Total intereses: ${totalInterest:N2}");
@@ -117,9 +118,7 @@ public class SimulationPlugin
             sb.AppendLine("Mes | Cuota | Capital | Interés | Seguro | Saldo");
 
             foreach (var row in schedule)
-            {
                 sb.AppendLine($"{row.Month,3} | ${row.Payment:N2} | ${row.Principal:N2} | ${row.Interest:N2} | ${row.Insurance:N2} | ${row.Balance:N2}");
-            }
 
             return sb.ToString();
         }
@@ -132,8 +131,7 @@ public class SimulationPlugin
     // ── List recent ───────────────────────────────────────────────
 
     [KernelFunction("list_simulations")]
-    [Description("Lista las simulaciones más recientes del historial. " +
-                 "Devuelve un resumen de cada simulación ordenado por fecha de creación descendente.")]
+    [Description("Lista las simulaciones más recientes del historial ordenadas por fecha de creación descendente.")]
     public async Task<string> ListSimulationsAsync(
         [Description("Cantidad de simulaciones a listar (máximo 20, por defecto 5)")] int count = 5)
     {
@@ -141,10 +139,9 @@ public class SimulationPlugin
         {
             count = Math.Clamp(count, 1, 20);
 
-            var (items, _) = await _repo.GetCursorPagedAsync(
-                pageSize: count,
-                ascending: false,
-                sortBy: "createdAt");
+            using var scope = _scopeFactory.CreateScope();
+            var (items, _) = await GetRepo(scope).GetCursorPagedAsync(
+                pageSize: count, ascending: false, sortBy: "createdAt");
 
             if (items.Count == 0)
                 return "No hay simulaciones registradas en el historial.";
@@ -185,6 +182,8 @@ public class SimulationPlugin
             if (guidStrings.Length > 6)
                 return "Máximo 6 simulaciones para comparar.";
 
+            using var scope = _scopeFactory.CreateScope();
+            var repo = GetRepo(scope);
             var scenarios = new List<(SimulationHistory Entity, List<ScheduleRow> Schedule)>();
 
             foreach (var idStr in guidStrings)
@@ -192,7 +191,7 @@ public class SimulationPlugin
                 if (!Guid.TryParse(idStr, out var guid))
                     return $"El ID '{idStr}' no es un GUID válido.";
 
-                var entity = await _repo.GetByIdAsync(guid);
+                var entity = await repo.GetByIdAsync(guid);
                 if (entity is null)
                     return $"No encontré una simulación con ID {idStr}.";
 
@@ -204,14 +203,12 @@ public class SimulationPlugin
             sb.AppendLine($"Comparación de {scenarios.Count} simulaciones:");
             sb.AppendLine();
 
-            // Header
             sb.Append("Indicador".PadRight(20));
             for (var i = 0; i < scenarios.Count; i++)
                 sb.Append($"| Escenario {i + 1}".PadRight(18));
             sb.AppendLine();
             sb.AppendLine(new string('-', 20 + scenarios.Count * 18));
 
-            // Rows
             void AddRow(string label, Func<(SimulationHistory, List<ScheduleRow>), string> getValue)
             {
                 sb.Append(label.PadRight(20));
@@ -230,7 +227,6 @@ public class SimulationPlugin
 
             sb.AppendLine();
 
-            // Best
             var payments = scenarios.Select((s, i) => (Monthly: s.Schedule.FirstOrDefault()?.Payment ?? 0, Index: i)).ToList();
             var cheapest = payments.MinBy(p => p.Monthly);
             sb.AppendLine($"✓ Cuota más baja: Escenario {cheapest.Index + 1} (${cheapest.Monthly:N2}/mes)");
@@ -250,8 +246,7 @@ public class SimulationPlugin
     // ── Delete ────────────────────────────────────────────────────
 
     [KernelFunction("delete_simulation")]
-    [Description("Elimina una simulación por su ID. Solo ejecutar cuando el usuario lo confirme explícitamente. " +
-                 "Esta acción es irreversible.")]
+    [Description("Elimina una simulación por su ID. Solo ejecutar cuando el usuario lo confirme explícitamente. Acción irreversible.")]
     public async Task<string> DeleteSimulationAsync(
         [Description("ID (GUID) de la simulación a eliminar")] string id)
     {
@@ -260,7 +255,8 @@ public class SimulationPlugin
             if (!Guid.TryParse(id, out var guid))
                 return $"El ID '{id}' no es un GUID válido.";
 
-            var deleted = await _repo.DeleteAsync(guid);
+            using var scope = _scopeFactory.CreateScope();
+            var deleted = await GetRepo(scope).DeleteAsync(guid);
 
             return deleted
                 ? $"Simulación {id} eliminada correctamente."

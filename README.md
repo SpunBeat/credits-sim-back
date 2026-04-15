@@ -1,11 +1,12 @@
 # Credits Simulator API
 
-Web API en .NET 8 para simulacion de creditos personales con sistema de amortizacion frances (cuotas constantes).
+Web API en .NET 8 para simulacion de creditos personales con sistema de amortizacion frances (cuotas constantes). Incluye asistente financiero AI con Gemini via Semantic Kernel.
 
 ## Requisitos previos
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
 - [Docker](https://docs.docker.com/get-docker/) y Docker Compose
+- API Key de Google Gemini (para el asistente AI)
 
 ## Primeros pasos
 
@@ -24,7 +25,16 @@ docker compose up -d
 
 Inicia un contenedor PostgreSQL 16 en `localhost:5432` con credenciales por defecto (`postgres/postgres`).
 
-### 3. Ejecutar la API
+### 3. Configurar Gemini API Key
+
+```bash
+cd src/CreditsSim.WebAPI
+dotnet user-secrets set "Gemini:ApiKey" "TU_API_KEY_AQUI"
+```
+
+La API Key se almacena en user-secrets (fuera del repositorio). Si no se configura, la app falla en startup.
+
+### 4. Ejecutar la API
 
 ```bash
 dotnet run --project src/CreditsSim.WebAPI
@@ -32,13 +42,84 @@ dotnet run --project src/CreditsSim.WebAPI
 
 La migracion se aplica automaticamente al iniciar. La API estara disponible en `http://localhost:5087`.
 
-### 4. Swagger
+### 5. Swagger
 
 Navega a [http://localhost:5087/swagger](http://localhost:5087/swagger) para explorar los endpoints.
 
 ## Endpoints
 
-### Crear simulacion
+### Simulaciones
+
+| Endpoint | Metodo | Descripcion |
+|---|---|---|
+| `/api/simulation` | POST | Crea una simulacion y devuelve el cronograma |
+| `/api/simulations/{id}` | GET | Recupera una simulacion por GUID |
+| `/api/simulations/{id}` | DELETE | Elimina una simulacion (204/404) |
+| `/api/simulations` | GET | Lista con cursor pagination, sort y filtros |
+
+### Asistente AI
+
+| Endpoint | Metodo | Descripcion |
+|---|---|---|
+| `/api/assistant/chat` | POST | Chat con el asistente financiero (Gemini) |
+
+### Health check
+
+```
+GET /health
+```
+
+Exento de rate limiting. Retorna `{ "status": "healthy" }`.
+
+## Asistente AI (Semantic Kernel + Gemini)
+
+El endpoint `POST /api/assistant/chat` conecta con Gemini via Semantic Kernel con function calling habilitado.
+
+### Request
+
+```json
+{
+  "message": "Simulame un credito de 60000 pesos a 24 meses al 18% fijo",
+  "conversationHistory": []
+}
+```
+
+### Response
+
+```json
+{
+  "reply": "Tu credito de $60,000 a 24 meses... cuota mensual: $3,034.45...",
+  "toolsUsed": ["create_simulation"]
+}
+```
+
+### Tools disponibles (SimulationPlugin)
+
+| Tool | Descripcion |
+|---|---|
+| `create_simulation` | Crea una simulacion con monto, plazo y tasa |
+| `get_simulation` | Obtiene detalle completo con cronograma por ID |
+| `list_simulations` | Lista las N simulaciones mas recientes |
+| `compare_simulations` | Compara KPIs de multiples simulaciones lado a lado |
+| `delete_simulation` | Elimina una simulacion por ID (requiere confirmacion del usuario) |
+
+### System prompt
+
+El asistente responde en español, usa las herramientas para datos reales (no inventa cifras), confirma antes de eliminar y redirige preguntas fuera de su dominio.
+
+### Configuracion
+
+```json
+// appsettings.json
+{
+  "Gemini": {
+    "ApiKey": "",              // via user-secrets o env var
+    "ChatModel": "gemini-2.5-flash"
+  }
+}
+```
+
+## Crear simulacion
 
 ```
 POST /api/simulation
@@ -64,94 +145,37 @@ POST /api/simulation
   "termMonths": 12,
   "annualRate": 18.5,
   "installmentType": "FIXED",
-  "schedule": [
-    {
-      "month": 1,
-      "payment": 4613.78,
-      "principal": 3842.95,
-      "interest": 770.83,
-      "insurance": 32.50,
-      "balance": 46157.05
-    }
-  ],
+  "schedule": [{ "month": 1, "payment": 4613.78, "principal": 3842.95, "interest": 770.83, "insurance": 32.50, "balance": 46157.05 }],
   "createdAt": "2026-04-08T12:00:00Z"
 }
 ```
 
-### Consultar simulacion
+## Listar simulaciones (cursor-based pagination)
 
 ```
-GET /api/simulations/{id}
+GET /api/simulations?pageSize=10&sortBy=createdAt&sortOrder=desc
 ```
 
-### Eliminar simulacion
-
-```
-DELETE /api/simulations/{id}
-```
-
-| Status | Descripcion |
-|---|---|
-| 204 No Content | Simulacion eliminada exitosamente |
-| 404 Not Found | No se encontro simulacion con ese ID |
-
-> **Nota sobre cache:** El listado tiene `Cache-Control: private, max-age=30`. Tras eliminar un registro, el listado puede mostrar el item eliminado durante hasta 30 segundos hasta que el cache del browser expire (consistencia eventual).
-
-### Listar simulaciones (cursor-based pagination)
-
-```
-GET /api/simulations?pageSize=10&sortOrder=desc
-```
-
-**Parametros de cursor (para pagina siguiente):**
+**Parametros:**
 
 | Parametro | Tipo | Descripcion |
 |---|---|---|
 | `pageSize` | int | Elementos por pagina (1-100, default 10) |
-| `sortBy` | string | Columna: `createdAt` (default), `amount`, `termMonths`, `annualRate`, `installmentType` |
+| `sortBy` | string | Columna: `createdAt`, `amount`, `termMonths`, `annualRate`, `installmentType` |
 | `sortOrder` | string | `desc` (default) o `asc` |
-| `cursorCreatedAt` | DateTime | Timestamp del ultimo item de la pagina anterior |
-| `cursorId` | Guid | ID del ultimo item de la pagina anterior (desempate) |
+| `cursorCreatedAt` | DateTime | Cursor: timestamp del ultimo item |
+| `cursorId` | Guid | Cursor: ID del ultimo item (desempate) |
 
-**Filtros opcionales (AND):**
+**Filtros opcionales (AND):** `amountMin`, `amountMax`, `termMonths`, `annualRateMin`, `annualRateMax`, `installmentType`, `createdFrom`, `createdTo`
 
-| Parametro | Tipo | Descripcion |
-|---|---|---|
-| `amountMin` | decimal | Monto minimo (inclusive) |
-| `amountMax` | decimal | Monto maximo (inclusive) |
-| `termMonths` | int | Plazo exacto en meses |
-| `annualRateMin` | decimal | Tasa minima (%) |
-| `annualRateMax` | decimal | Tasa maxima (%) |
-| `installmentType` | string | Tipo de cuota (FIXED) |
-| `createdFrom` | DateTime | Creado desde (UTC) |
-| `createdTo` | DateTime | Creado hasta (UTC) |
-
-**Respuesta (200 OK):**
+**Response headers:**
 
 ```
-Headers:
-  X-Total-Count: 42          (solo en primera pagina)
-  X-Page-Size: 10
-  X-Has-Next-Page: true
-  X-Next-Cursor-CreatedAt: 2026-04-09T21:06:57.5667060Z
-  X-Next-Cursor-Id: 96acfe26-3347-4ea0-a1d0-0606ce1fb48a
-  Cache-Control: private,max-age=30
-
-Body:
-  [{ ... }, { ... }]          (array de SimulationSummary)
-```
-
-**Flujo de paginacion:**
-
-```
-1. Primera pagina:
-   GET /api/simulations?pageSize=10
-
-2. Segunda pagina (usando cursores del header):
-   GET /api/simulations?pageSize=10&cursorCreatedAt=2026-04-09T21:06:57Z&cursorId=96acfe26-...
-
-3. Siguiente pagina: repetir con nuevos cursores del header
-4. Ultima pagina: X-Has-Next-Page: false
+X-Total-Count: 42          (solo en primera pagina)
+X-Has-Next-Page: true
+X-Next-Cursor-CreatedAt: 2026-04-09T21:06:57Z
+X-Next-Cursor-Id: 96acfe26-...
+Cache-Control: private,max-age=30
 ```
 
 ## Arquitectura
@@ -161,39 +185,39 @@ src/
 ├── CreditsSim.Domain/            # Entidades, interfaces, query objects
 ├── CreditsSim.Application/       # CQRS (MediatR), DTOs, validacion, amortizacion
 ├── CreditsSim.Infrastructure/    # EF Core, PostgreSQL, repositorios, specifications
-└── CreditsSim.WebAPI/            # Controllers, filters, middleware, Swagger
+└── CreditsSim.WebAPI/
+    ├── Controllers/              # Simulations + Assistant
+    ├── Plugins/SimulationPlugin  # Semantic Kernel tools para Gemini
+    ├── Filters/                  # PaginationHeaderFilter
+    ├── Middleware/                # GlobalExceptionHandler
+    └── Swagger/                  # RequireNonNullableSchemaFilter
 ```
 
 ### Patrones
 
 - **Clean Architecture** con dependencias hacia adentro
 - **CQRS** via MediatR (commands/queries separados)
+- **Semantic Kernel** con Gemini (function calling + SimulationPlugin)
 - **Cursor-based pagination** con indice compuesto `(created_at DESC, id DESC)`
-- **Pagination headers** via `PaginationHeaderFilter` (ActionFilter automatico)
+- **Pagination headers** via ActionFilter automatico
 - **Specification pattern** para filtros de busqueda
 - **FluentValidation** con pipeline behavior
-- **Rate limiting** nativo de .NET 8 (FixedWindow, 10 req/min por IP)
+- **Rate limiting** nativo (Simulations: 10 req/min, Assistant: 20 req/min, por IP)
 - **Response caching** client-side (30s, `private`)
 
 ## Configuracion
-
-La cadena de conexion se encuentra en `src/CreditsSim.WebAPI/appsettings.json`:
 
 ```json
 {
   "ConnectionStrings": {
     "DefaultConnection": "Host=localhost;Port=5432;Database=credits_sim;Username=postgres;Password=postgres"
+  },
+  "Gemini": {
+    "ApiKey": "",
+    "ChatModel": "gemini-2.5-flash"
   }
 }
 ```
-
-## Health check
-
-```
-GET /health
-```
-
-Exento de rate limiting. Retorna `{ "status": "healthy" }`.
 
 ## Contrato OpenAPI
 

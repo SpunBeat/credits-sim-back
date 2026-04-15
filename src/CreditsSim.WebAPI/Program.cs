@@ -11,6 +11,7 @@ using CreditsSim.WebAPI.Swagger;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
+using Microsoft.SemanticKernel;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -76,6 +77,17 @@ builder.Services.AddRateLimiter(options =>
             }), ct);
     };
 });
+
+// ── Semantic Kernel + Gemini ───────────────────────────────────────
+var geminiApiKey = builder.Configuration["Gemini:ApiKey"]
+    ?? throw new InvalidOperationException("Gemini:ApiKey is not configured. Set it in appsettings or user-secrets.");
+var geminiModel = builder.Configuration["Gemini:ChatModel"] ?? "gemini-2.0-flash";
+
+if (string.IsNullOrWhiteSpace(geminiApiKey))
+    throw new InvalidOperationException("Gemini:ApiKey must not be empty. Set it in appsettings, environment variables, or user-secrets.");
+
+var kernelBuilder = builder.Services.AddKernel();
+kernelBuilder.AddGoogleAIGeminiChatCompletion(geminiModel, geminiApiKey);
 
 // ── Swagger / OpenAPI ─────────────────────────────────────────────
 builder.Services.AddEndpointsApiExplorer();

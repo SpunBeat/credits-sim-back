@@ -112,16 +112,23 @@ dotnet run --project src/CreditsSim.WebAPI
 
 ## Tests
 
-Proyecto xUnit en `tests/CreditsSim.Tests/` — cubre los calculadores de amortizacion y la factory.
+Proyecto xUnit en `tests/CreditsSim.Tests/` — cubre los calculadores, validators, el converter estricto y el plugin de Semantic Kernel.
 
 ```bash
 dotnet test                                    # corre todos los tests de la solucion
 dotnet test tests/CreditsSim.Tests            # solo el proyecto de tests
 ```
 
-Cobertura actual:
-- `GermanAmortizationCalculatorTests` — invariantes matematicas (saldo final = 0, Σ capital = monto, cuotas decrecientes) + cronograma conocido fila a fila.
-- `AmortizationCalculatorFactoryTests` — resolucion FIXED → French, GERMAN → German, tipo invalido → `NotSupportedException`.
+Cobertura actual (39 tests):
+
+| Carpeta | Archivo | Cubre |
+|---|---|---|
+| `Calculators/` | `GermanAmortizationCalculatorTests` | Invariantes matematicas (saldo final = 0, Σ capital = monto, cuotas decrecientes) + cronograma conocido fila a fila + edge cases (plazo = 1, tasa = 0). |
+| `Calculators/` | `AmortizationCalculatorFactoryTests` | Resolucion `FIXED` → French, `GERMAN` → German, valor fuera de rango → `NotSupportedException`. |
+| `Validators/` | `CreateSimulationValidatorTests` | Enum valido pasa; enum fuera de rango emite mensaje que lista `FIXED` y `GERMAN`; validacion de Amount. |
+| `Validators/` | `ListSimulationsValidatorTests` | Query-string `installmentType` case-insensitive (convencion HTTP); valores desconocidos fallan con mensaje que lista enums validos. |
+| `Serialization/` | `StrictEnumConverterTests` | `StrictEnumConverter<InstallmentType>` rechaza `"fixed"`, `"german"`, `"AMERICAN"`, `null`, numeros y strings vacios con `JsonException` legible. |
+| `Plugins/` | `SimulationPluginTests` | El string recibido del LLM se parsea al enum `InstallmentType`; la entidad se persiste con el valor canonico (`"FIXED"`/`"GERMAN"`) sin importar la caja; tipos invalidos devuelven mensaje sin persistir; default es `FIXED`. |
 
 > La imagen Docker **no** incluye el proyecto de tests (ver `.dockerignore`). Correr `dotnet test` requiere el SDK de .NET 8 local.
 

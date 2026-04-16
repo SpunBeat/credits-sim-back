@@ -94,4 +94,13 @@ Las reglas de negocio (monto, plazo, tasa) son identicas para ambos sistemas —
 
 ## Tests
 
-Se agregan tests en `CreditsSim.Tests/Calculators/` cubriendo invariantes matematicas (saldo final = 0, Σ capital = monto, cuotas decrecientes), cronograma conocido fila a fila para German, y resolucion del factory para FIXED/GERMAN/invalido. Los tests son parte del contrato de esta decision arquitectonica.
+Los tests son parte del contrato de esta decision arquitectonica. Cobertura agregada en `tests/CreditsSim.Tests/`:
+
+- **`Calculators/GermanAmortizationCalculatorTests`** — invariantes matematicas (saldo final = 0, Σ capital = monto, cuotas decrecientes), cronograma conocido fila a fila, edge cases (plazo = 1, tasa = 0, monto no divisible).
+- **`Calculators/AmortizationCalculatorFactoryTests`** — resolucion `FIXED` → French, `GERMAN` → German, valor fuera de rango → `NotSupportedException`.
+- **`Validators/CreateSimulationValidatorTests`** — enum valido pasa; valor fuera de rango emite mensaje que lista FIXED y GERMAN.
+- **`Validators/ListSimulationsValidatorTests`** — query-string case-insensitive; tipos desconocidos (`AMERICAN`, `xyz`) fallan con mensaje que lista enums validos.
+- **`Serialization/StrictEnumConverterTests`** — el boundary real de 400: rechaza `"fixed"`, `"german"`, `"AMERICAN"`, `null`, numeros y strings vacios con `JsonException` legible; acepta solo valores canonicos (`"FIXED"`/`"GERMAN"`).
+- **`Plugins/SimulationPluginTests`** — el string recibido del LLM se parsea al enum; la entidad se persiste con el valor canonico sin importar la caja del input; tipos invalidos devuelven mensaje al LLM sin persistir; default es FIXED.
+
+Total: 39 tests que validan el contrato end-to-end (deserializacion → validacion → plugin → factory → calculador → invariantes).

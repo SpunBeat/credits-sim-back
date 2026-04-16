@@ -21,11 +21,13 @@ Se necesita un asistente conversacional que ayude a los usuarios a crear, consul
 
 | Tool | Parametros | Validacion |
 |---|---|---|
-| `create_simulation` | amount, termMonths, annualRate | amount: 1–10M, term: 1–360, rate: 0–100 |
+| `create_simulation` | amount, termMonths, annualRate, installmentType | amount: 1–10M, term: 1–360, rate: 0–100, installmentType: `FIXED` o `GERMAN` (case-insensitive en el LLM, canonicalizado a mayusculas al persistir) |
 | `get_simulation` | id (GUID) | Formato GUID valido |
 | `list_simulations` | count (1–20, default 5) | Clamped con `Math.Clamp` |
 | `compare_simulations` | ids (CSV de GUIDs) | Min 2, max 6 |
 | `delete_simulation` | id (GUID) | Formato GUID valido |
+
+`installmentType` se agrego en ADR-009 — el LLM recibe un `string` en la tool (los enums C# no son expresables en el schema JSON que entiende Gemini), pero internamente el plugin hace `Enum.TryParse<InstallmentType>(..., ignoreCase: true)` y persiste `.ToString()` del enum. Esto centraliza los valores validos en un unico tipo. Los outputs de `create_simulation`, `get_simulation` y `compare_simulations` rotulan las cuotas como "Cuota inicial / Cuota final" cuando el tipo es GERMAN, "Cuota mensual" cuando es FIXED.
 
 ### Inyeccion de dependencias scoped
 
@@ -61,6 +63,11 @@ Instrucciones en español que definen el comportamiento:
 - Usar las herramientas para datos reales (nunca inventar cifras).
 - Confirmar antes de eliminar si el usuario no fue explicito.
 - Redirigir preguntas fuera del dominio financiero.
+
+Desde ADR-009 el prompt tambien contempla la eleccion entre sistemas de amortizacion:
+- Describe FIXED (cuota constante, ideal para previsibilidad) y GERMAN (capital constante, cuotas decrecientes, menor costo total pero mayor liquidez inicial requerida).
+- Protocolo explicito de 3 pasos cuando el usuario pregunta cual conviene: (1) `create_simulation` con FIXED, (2) `create_simulation` con GERMAN con mismos parametros, (3) explicar el trade-off comparando `totalInterest` y cuota inicial.
+- Regla de etiquetado: para resultados GERMAN usar "Cuota inicial" y "Cuota final"; nunca "Cuota mensual".
 
 ### Tracking de tools invocadas
 

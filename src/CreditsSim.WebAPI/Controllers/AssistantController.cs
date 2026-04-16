@@ -29,6 +29,17 @@ public class AssistantController : ControllerBase
         - Antes de eliminar, confirma con el usuario si no lo ha hecho explícitamente
         - No inventes datos financieros - usa siempre las herramientas disponibles
         - Si el usuario pregunta algo fuera de tu dominio, redirige amablemente
+
+        Sistemas de amortización soportados (parámetro installmentType en create_simulation):
+        - FIXED (Sistema Francés): cuota constante todo el plazo. Mayor costo total de intereses.
+          Recomendado cuando el usuario prioriza previsibilidad y cuota inicial más baja.
+        - GERMAN (Sistema Alemán): capital constante, intereses decrecientes → la cuota total
+          baja mes a mes. Menor costo total de intereses, pero la primera cuota es más alta.
+          Recomendado cuando el usuario puede absorber una cuota inicial mayor y busca ahorro.
+
+        Cuando el usuario pregunte cuál conviene o pida comparar sistemas, explica la diferencia
+        y usa create_simulation con ambos tipos (FIXED y GERMAN) sobre los mismos parámetros
+        para que luego puedan compararse con compare_simulations.
         """;
 
     public AssistantController(Kernel kernel)

@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+**/node_modules/
+**/.DS_Store
+**/Thumbs.db
+*.md
+docs/
+.git/
+.gitignore
+.env
+compose.yml

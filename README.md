@@ -4,47 +4,113 @@ Web API en .NET 8 para simulacion de creditos personales con sistema de amortiza
 
 ## Requisitos previos
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
 - [Docker](https://docs.docker.com/get-docker/) y Docker Compose
 - API Key de Google Gemini (para el asistente AI)
 
-## Primeros pasos
+> No se requiere .NET SDK instalado — el proyecto se compila y ejecuta dentro de Docker.
 
-### 1. Clonar el repositorio
+## Inicio rapido
 
 ```bash
+# 1. Clonar
 git clone https://github.com/tu-usuario/credits-sim-back.git
 cd credits-sim-back
-```
 
-### 2. Levantar la base de datos
+# 2. Configurar variables de entorno
+cp .env.example .env
+# Editar .env y agregar tu GEMINI_API_KEY
 
-```bash
+# 3. Levantar todo
 docker compose up -d
+
+# 4. Verificar
+curl http://localhost:5087/health
 ```
 
-Inicia un contenedor PostgreSQL 16 en `localhost:5432` con credenciales por defecto (`postgres/postgres`).
+La API estara disponible en `http://localhost:5087`. PostgreSQL en `localhost:5432`.
 
-### 3. Configurar Gemini API Key
+## Configuracion (.env)
+
+El archivo `.env` contiene toda la configuracion necesaria. Copiar `.env.example` como punto de partida:
+
+```env
+# Base de datos
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=credits_sim
+
+# API
+ASPNETCORE_ENVIRONMENT=Development
+CONNECTION_STRING=Host=postgres;Port=5432;Database=credits_sim;Username=postgres;Password=postgres
+
+# Gemini AI
+GEMINI_API_KEY=tu_api_key_aqui    # <-- obligatorio
+GEMINI_CHAT_MODEL=gemini-2.5-flash
+```
+
+> **Importante:** `CONNECTION_STRING` usa `Host=postgres` (nombre del servicio Docker), no `localhost`. Esto se resuelve automaticamente dentro de la red de Docker.
+
+## Docker
+
+### Arquitectura de contenedores
+
+```
+┌─────────────────────────────┐
+│  credits-sim-api (:5087)    │──── .NET 8 Alpine (143MB)
+│  Auto-migración al iniciar  │
+└────────────┬────────────────┘
+             │ depends_on (healthy)
+┌────────────▼────────────────┐
+│  credits-sim-db (:5432)     │──── PostgreSQL 16 Alpine
+│  Healthcheck: pg_isready    │
+└─────────────────────────────┘
+```
+
+- **Imagen base:** `mcr.microsoft.com/dotnet/aspnet:8.0-alpine` — multi-arch (amd64 + arm64)
+- **Tamaño final:** ~143MB (Alpine + ICU para globalization)
+- **Apple Silicon:** compatible nativo con M1/M2/M3/M4 (arm64)
+- **Healthcheck:** PostgreSQL reporta healthy antes de que la API arranque
+- **Migraciones:** se aplican automaticamente en startup
+
+### Comandos
 
 ```bash
+docker compose up -d            # levantar en background
+docker compose up -d --build    # reconstruir imagen + levantar
+docker compose logs -f api      # ver logs de la API en tiempo real
+docker compose logs -f postgres # ver logs de PostgreSQL
+docker compose ps               # ver estado de contenedores
+docker compose down             # detener (mantiene datos)
+docker compose down -v          # detener + borrar volumenes (datos)
+```
+
+### Reconstruir tras cambios en codigo
+
+```bash
+docker compose up -d --build
+```
+
+## Desarrollo local (sin Docker para la API)
+
+Si prefieres ejecutar la API directamente con el SDK de .NET (requiere .NET 8 SDK instalado):
+
+```bash
+# Levantar solo PostgreSQL con Docker
+docker compose up -d postgres
+
+# Configurar Gemini API Key via user-secrets
 cd src/CreditsSim.WebAPI
 dotnet user-secrets set "Gemini:ApiKey" "TU_API_KEY_AQUI"
-```
 
-La API Key se almacena en user-secrets (fuera del repositorio). Si no se configura, la app falla en startup.
-
-### 4. Ejecutar la API
-
-```bash
+# Ejecutar la API
 dotnet run --project src/CreditsSim.WebAPI
 ```
 
-La migracion se aplica automaticamente al iniciar. La API estara disponible en `http://localhost:5087`.
+> En este modo, la connection string de `appsettings.json` usa `Host=localhost` (no `Host=postgres`).
 
-### 5. Swagger
+## Swagger
 
-Navega a [http://localhost:5087/swagger](http://localhost:5087/swagger) para explorar los endpoints.
+Navega a [http://localhost:5087/swagger](http://localhost:5087/swagger) para explorar y probar los endpoints.
 
 ## Endpoints
 
@@ -102,22 +168,6 @@ El endpoint `POST /api/assistant/chat` conecta con Gemini via Semantic Kernel co
 | `list_simulations` | Lista las N simulaciones mas recientes |
 | `compare_simulations` | Compara KPIs de multiples simulaciones lado a lado |
 | `delete_simulation` | Elimina una simulacion por ID (requiere confirmacion del usuario) |
-
-### System prompt
-
-El asistente responde en español, usa las herramientas para datos reales (no inventa cifras), confirma antes de eliminar y redirige preguntas fuera de su dominio.
-
-### Configuracion
-
-```json
-// appsettings.json
-{
-  "Gemini": {
-    "ApiKey": "",              // via user-secrets o env var
-    "ChatModel": "gemini-2.5-flash"
-  }
-}
-```
 
 ## Crear simulacion
 
@@ -181,16 +231,20 @@ Cache-Control: private,max-age=30
 ## Arquitectura
 
 ```
-src/
-├── CreditsSim.Domain/            # Entidades, interfaces, query objects
-├── CreditsSim.Application/       # CQRS (MediatR), DTOs, validacion, amortizacion
-├── CreditsSim.Infrastructure/    # EF Core, PostgreSQL, repositorios, specifications
-└── CreditsSim.WebAPI/
-    ├── Controllers/              # Simulations + Assistant
-    ├── Plugins/SimulationPlugin  # Semantic Kernel tools para Gemini
-    ├── Filters/                  # PaginationHeaderFilter
-    ├── Middleware/                # GlobalExceptionHandler
-    └── Swagger/                  # RequireNonNullableSchemaFilter
+credits-sim-back/
+├── Dockerfile                    # Multi-stage: SDK Alpine → ASP.NET Alpine
+├── compose.yml                   # PostgreSQL + API
+├── .env.example                  # Template de variables de entorno
+└── src/
+    ├── CreditsSim.Domain/        # Entidades, interfaces, query objects
+    ├── CreditsSim.Application/   # CQRS (MediatR), DTOs, validacion, amortizacion
+    ├── CreditsSim.Infrastructure/ # EF Core, PostgreSQL, repositorios, specifications
+    └── CreditsSim.WebAPI/
+        ├── Controllers/          # Simulations + Assistant
+        ├── Plugins/              # SimulationPlugin (Semantic Kernel tools)
+        ├── Filters/              # PaginationHeaderFilter
+        ├── Middleware/            # GlobalExceptionHandler
+        └── Swagger/              # RequireNonNullableSchemaFilter
 ```
 
 ### Patrones
@@ -205,29 +259,8 @@ src/
 - **Rate limiting** nativo (Simulations: 10 req/min, Assistant: 20 req/min, por IP)
 - **Response caching** client-side (30s, `private`)
 
-## Configuracion
-
-```json
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Host=localhost;Port=5432;Database=credits_sim;Username=postgres;Password=postgres"
-  },
-  "Gemini": {
-    "ApiKey": "",
-    "ChatModel": "gemini-2.5-flash"
-  }
-}
-```
-
 ## Contrato OpenAPI
 
 ```
 http://localhost:5087/swagger/v1/swagger.json
-```
-
-## Detener los servicios
-
-```bash
-docker compose down       # mantiene datos
-docker compose down -v    # elimina datos
 ```

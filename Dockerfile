@@ -2,17 +2,19 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
 WORKDIR /src
 
-# Copy csproj files first for layer caching
-COPY CreditsSim.sln .
+# Copy csproj files first for layer caching. Solo los proyectos de src/ son
+# necesarios para el runtime — tests/ se excluye del build de produccion.
 COPY src/CreditsSim.Domain/CreditsSim.Domain.csproj src/CreditsSim.Domain/
 COPY src/CreditsSim.Application/CreditsSim.Application.csproj src/CreditsSim.Application/
 COPY src/CreditsSim.Infrastructure/CreditsSim.Infrastructure.csproj src/CreditsSim.Infrastructure/
 COPY src/CreditsSim.WebAPI/CreditsSim.WebAPI.csproj src/CreditsSim.WebAPI/
 
-RUN dotnet restore
+# Restore transitivo desde WebAPI (arrastra Domain, Application, Infrastructure).
+# Evita depender del .sln, que incluye tests/ no presente en el contexto de build.
+RUN dotnet restore src/CreditsSim.WebAPI/CreditsSim.WebAPI.csproj
 
-# Copy everything and publish
-COPY . .
+# Copy source trees (src only — tests/ se ignora via .dockerignore)
+COPY src/ src/
 RUN dotnet publish src/CreditsSim.WebAPI/CreditsSim.WebAPI.csproj \
     -c Release \
     -o /app/publish \

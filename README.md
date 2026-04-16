@@ -1,6 +1,6 @@
 # Credits Simulator API
 
-Web API en .NET 8 para simulacion de creditos personales con sistema de amortizacion frances (cuotas constantes). Incluye asistente financiero AI con Gemini via Semantic Kernel.
+Web API en .NET 8 para simulacion de creditos personales. Soporta dos sistemas de amortizacion — **Frances** (cuotas constantes) y **Aleman** (capital constante, cuotas decrecientes). Incluye asistente financiero AI con Gemini via Semantic Kernel.
 
 ## Requisitos previos
 
@@ -90,6 +90,8 @@ docker compose down -v          # detener + borrar volumenes (datos)
 docker compose up -d --build
 ```
 
+> **Build de produccion sin tests:** `Dockerfile` hace `dotnet restore src/CreditsSim.WebAPI/CreditsSim.WebAPI.csproj` (restore transitivo) en vez de basarse en `CreditsSim.sln`. `.dockerignore` excluye `tests/`, por lo que la imagen final no carga el proyecto de tests. Los tests se corren solo en desarrollo (ver [Tests](#tests)).
+
 ## Desarrollo local (sin Docker para la API)
 
 Si prefieres ejecutar la API directamente con el SDK de .NET (requiere .NET 8 SDK instalado):
@@ -107,6 +109,21 @@ dotnet run --project src/CreditsSim.WebAPI
 ```
 
 > En este modo, la connection string de `appsettings.json` usa `Host=localhost` (no `Host=postgres`).
+
+## Tests
+
+Proyecto xUnit en `tests/CreditsSim.Tests/` — cubre los calculadores de amortizacion y la factory.
+
+```bash
+dotnet test                                    # corre todos los tests de la solucion
+dotnet test tests/CreditsSim.Tests            # solo el proyecto de tests
+```
+
+Cobertura actual:
+- `GermanAmortizationCalculatorTests` — invariantes matematicas (saldo final = 0, Σ capital = monto, cuotas decrecientes) + cronograma conocido fila a fila.
+- `AmortizationCalculatorFactoryTests` — resolucion FIXED → French, GERMAN → German, tipo invalido → `NotSupportedException`.
+
+> La imagen Docker **no** incluye el proyecto de tests (ver `.dockerignore`). Correr `dotnet test` requiere el SDK de .NET 8 local.
 
 ## Swagger
 
@@ -163,11 +180,26 @@ El endpoint `POST /api/assistant/chat` conecta con Gemini via Semantic Kernel co
 
 | Tool | Descripcion |
 |---|---|
-| `create_simulation` | Crea una simulacion con monto, plazo y tasa |
+| `create_simulation` | Crea una simulacion con monto, plazo, tasa e `installmentType` (`FIXED` o `GERMAN`) |
 | `get_simulation` | Obtiene detalle completo con cronograma por ID |
 | `list_simulations` | Lista las N simulaciones mas recientes |
 | `compare_simulations` | Compara KPIs de multiples simulaciones lado a lado |
 | `delete_simulation` | Elimina una simulacion por ID (requiere confirmacion del usuario) |
+
+El system prompt del asistente contempla ambos sistemas — cuando el usuario pregunta cual conviene, Gemini explica la diferencia y puede usar `create_simulation` con ambos tipos para comparar.
+
+## Sistemas de amortizacion
+
+`installmentType` en `SimulationRequest` es un enum con dos valores (expuestos como enum en OpenAPI — `JsonStringEnumConverter` estricto, case-sensitive):
+
+| Valor | Sistema | Caracteristica |
+|---|---|---|
+| `FIXED` | Frances | Cuota total **constante** en todo el plazo. Mayor costo total de intereses. |
+| `GERMAN` | Aleman | **Capital constante** en cada periodo. Cuota total **decrece** mes a mes. Menor costo total de intereses, pero primera cuota mas alta. |
+
+El seguro de desgravamen (`0.065%` mensual sobre saldo) se calcula igual en ambos sistemas.
+
+Valores invalidos (`"german"`, `null`, desconocidos) son rechazados por el deserializer con **400 Bad Request** antes de llegar al validator. Ver ADR-009 para detalles.
 
 ## Crear simulacion
 
@@ -186,6 +218,8 @@ POST /api/simulation
 }
 ```
 
+`installmentType` puede ser `"FIXED"` o `"GERMAN"`. Si se omite, el default es `"FIXED"`.
+
 **Respuesta (201 Created):**
 
 ```json
@@ -199,6 +233,14 @@ POST /api/simulation
   "createdAt": "2026-04-08T12:00:00Z"
 }
 ```
+
+**Ejemplo sistema aleman (GERMAN):**
+
+```json
+{ "amount": 60000, "termMonths": 12, "annualRate": 18, "installmentType": "GERMAN" }
+```
+
+La cuota decrece — primera cuota ≈ $5,939, ultima ≈ $5,078, saldo final exacto en $0.00.
 
 ## Listar simulaciones (cursor-based pagination)
 
@@ -232,30 +274,35 @@ Cache-Control: private,max-age=30
 
 ```
 credits-sim-back/
-├── Dockerfile                    # Multi-stage: SDK Alpine → ASP.NET Alpine
+├── Dockerfile                    # Multi-stage: SDK Alpine → ASP.NET Alpine (excluye tests/)
+├── .dockerignore                 # Excluye tests/ del build de produccion
 ├── compose.yml                   # PostgreSQL + API
 ├── .env.example                  # Template de variables de entorno
-└── src/
-    ├── CreditsSim.Domain/        # Entidades, interfaces, query objects
-    ├── CreditsSim.Application/   # CQRS (MediatR), DTOs, validacion, amortizacion
-    ├── CreditsSim.Infrastructure/ # EF Core, PostgreSQL, repositorios, specifications
-    └── CreditsSim.WebAPI/
-        ├── Controllers/          # Simulations + Assistant
-        ├── Plugins/              # SimulationPlugin (Semantic Kernel tools)
-        ├── Filters/              # PaginationHeaderFilter
-        ├── Middleware/            # GlobalExceptionHandler
-        └── Swagger/              # RequireNonNullableSchemaFilter
+├── src/
+│   ├── CreditsSim.Domain/        # Entidades, interfaces, query objects
+│   ├── CreditsSim.Application/   # CQRS (MediatR), DTOs, validacion, amortizacion
+│   │   └── Services/             # IAmortizationCalculator + Base + French + German + Factory
+│   ├── CreditsSim.Infrastructure/ # EF Core, PostgreSQL, repositorios, specifications
+│   └── CreditsSim.WebAPI/
+│       ├── Controllers/          # Simulations + Assistant
+│       ├── Plugins/              # SimulationPlugin (Semantic Kernel tools)
+│       ├── Filters/              # PaginationHeaderFilter
+│       ├── Middleware/           # GlobalExceptionHandler (mapea NotSupportedException → 400)
+│       └── Swagger/              # RequireNonNullableSchemaFilter + StrictEnumConverter
+└── tests/
+    └── CreditsSim.Tests/         # xUnit — calculadores e invariantes matematicas
 ```
 
 ### Patrones
 
 - **Clean Architecture** con dependencias hacia adentro
 - **CQRS** via MediatR (commands/queries separados)
+- **Strategy + Factory** para amortizacion (`IAmortizationCalculator` + `AmortizationCalculatorBase` + French/German + Factory) — ver ADR-009
 - **Semantic Kernel** con Gemini (function calling + SimulationPlugin)
 - **Cursor-based pagination** con indice compuesto `(created_at DESC, id DESC)`
 - **Pagination headers** via ActionFilter automatico
 - **Specification pattern** para filtros de busqueda
-- **FluentValidation** con pipeline behavior
+- **FluentValidation** con pipeline behavior (enum `InstallmentType` validado via `IsInEnum()`)
 - **Rate limiting** nativo (Simulations: 10 req/min, Assistant: 20 req/min, por IP)
 - **Response caching** client-side (30s, `private`)
 

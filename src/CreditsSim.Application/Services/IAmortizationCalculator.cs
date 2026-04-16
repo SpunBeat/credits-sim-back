@@ -4,6 +4,6 @@ namespace CreditsSim.Application.Services;
 
 public interface IAmortizationCalculator
 {
-    string SupportedType { get; }
+    InstallmentType SupportedType { get; }
     List<ScheduleRow> Calculate(decimal amount, int termMonths, decimal annualRate);
 }

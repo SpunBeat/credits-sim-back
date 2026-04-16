@@ -2,18 +2,21 @@ using CreditsSim.Application.DTOs;
 
 namespace CreditsSim.Application.Services;
 
-public class GermanAmortizationCalculator : IAmortizationCalculator
+public class GermanAmortizationCalculator : AmortizationCalculatorBase
 {
-    // TODO: mover tasa a configuración
-    private const decimal InsuranceRateMonthly = 0.00065m; // 0.065% mensual sobre saldo
-
-    public string SupportedType => "GERMAN";
+    public override InstallmentType SupportedType => InstallmentType.GERMAN;
 
     /// <summary>
     /// Calcula el cronograma de pagos usando el Sistema Alemán (cuota de capital constante).
-    /// Capital = P / n, Interés = Saldo * r
+    /// Capital = P / n, Interés = Saldo * r, Cuota total = Capital + Interés + Seguro.
+    /// La cuota total decrece período a período porque el interés se aplica sobre saldo decreciente.
     /// </summary>
-    public List<ScheduleRow> Calculate(decimal amount, int termMonths, decimal annualRate)
+    /// <remarks>
+    /// El capital por período = monto / plazo, redondeado a 2 decimales.
+    /// El último período absorbe el drift de redondeo: principal = saldo pendiente.
+    /// El saldo siempre cierra en 0.
+    /// </remarks>
+    public override List<ScheduleRow> Calculate(decimal amount, int termMonths, decimal annualRate)
     {
         var monthlyRate = annualRate / 12m / 100m;
         var schedule = new List<ScheduleRow>(termMonths);

@@ -11,7 +11,7 @@ public record CreateSimulationCommand(
     decimal Amount,
     int TermMonths,
     decimal AnnualRate,
-    string InstallmentType = "FIXED"
+    InstallmentType InstallmentType = InstallmentType.FIXED
 ) : IRequest<SimulationResponse>;
 
 public class CreateSimulationHandler : IRequestHandler<CreateSimulationCommand, SimulationResponse>
@@ -36,7 +36,7 @@ public class CreateSimulationHandler : IRequestHandler<CreateSimulationCommand, 
             Amount = request.Amount,
             TermMonths = request.TermMonths,
             AnnualRate = request.AnnualRate,
-            InstallmentType = request.InstallmentType,
+            InstallmentType = request.InstallmentType.ToString(),
             ScheduleJson = JsonSerializer.Serialize(schedule),
             CreatedAt = DateTime.UtcNow
         };
@@ -49,7 +49,7 @@ public class CreateSimulationHandler : IRequestHandler<CreateSimulationCommand, 
             Amount = entity.Amount,
             TermMonths = entity.TermMonths,
             AnnualRate = entity.AnnualRate,
-            InstallmentType = entity.InstallmentType,
+            InstallmentType = request.InstallmentType,
             Schedule = schedule,
             CreatedAt = entity.CreatedAt
         };

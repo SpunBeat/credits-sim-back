@@ -2,18 +2,15 @@ using CreditsSim.Application.DTOs;
 
 namespace CreditsSim.Application.Services;
 
-public class FrenchAmortizationCalculator : IAmortizationCalculator
+public class FrenchAmortizationCalculator : AmortizationCalculatorBase
 {
-    // TODO: mover tasa a configuración
-    private const decimal InsuranceRateMonthly = 0.00065m; // 0.065% mensual sobre saldo
-
-    public string SupportedType => "FIXED";
+    public override InstallmentType SupportedType => InstallmentType.FIXED;
 
     /// <summary>
     /// Calcula el cronograma de pagos usando el Sistema Francés (cuotas constantes).
     /// Fórmula: C = P * [r(1+r)^n] / [(1+r)^n - 1]
     /// </summary>
-    public List<ScheduleRow> Calculate(decimal amount, int termMonths, decimal annualRate)
+    public override List<ScheduleRow> Calculate(decimal amount, int termMonths, decimal annualRate)
     {
         var monthlyRate = annualRate / 12m / 100m;
         var schedule = new List<ScheduleRow>(termMonths);

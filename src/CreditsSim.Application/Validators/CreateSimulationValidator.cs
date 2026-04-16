@@ -18,8 +18,10 @@ public class CreateSimulationValidator : AbstractValidator<CreateSimulationComma
             .GreaterThanOrEqualTo(0).WithMessage("La tasa anual no puede ser negativa.")
             .LessThanOrEqualTo(100).WithMessage("La tasa anual no puede exceder 100%.");
 
+        // El tipo es un enum C#: JsonStringEnumConverter rechaza strings invalidos ("german",
+        // null, desconocidos) antes de llegar al validator con JsonException -> 400.
+        // IsInEnum() es defensivo contra valores numericos fuera de rango en JSON (ej: 99).
         RuleFor(x => x.InstallmentType)
-            .Must(t => t is "FIXED" or "GERMAN")
-            .WithMessage("Tipo de cuota no soportado. Use: FIXED, GERMAN.");
+            .IsInEnum().WithMessage("Tipo de cuota no soportado. Use: FIXED, GERMAN.");
     }
 }

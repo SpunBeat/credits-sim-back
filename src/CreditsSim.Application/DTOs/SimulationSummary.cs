@@ -17,8 +17,8 @@ public record SimulationSummary
     /// <summary>Tasa de interés anual (%).</summary>
     public decimal AnnualRate { get; init; }
 
-    /// <summary>Tipo de cuota aplicado.</summary>
-    public string InstallmentType { get; init; } = string.Empty;
+    /// <summary>Tipo de cuota aplicado: FIXED (Sistema Francés) o GERMAN (Sistema Alemán).</summary>
+    public InstallmentType InstallmentType { get; init; } = InstallmentType.FIXED;
 
     /// <summary>Fecha y hora de creación (UTC).</summary>
     public DateTime CreatedAt { get; init; }

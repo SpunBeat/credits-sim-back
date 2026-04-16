@@ -29,12 +29,13 @@ public class SimulationPlugin
     // ── Create ────────────────────────────────────────────────────
 
     [KernelFunction("create_simulation")]
-    [Description("Crea una nueva simulación de crédito personal con cuotas fijas (sistema francés). " +
+    [Description("Crea una nueva simulación de crédito personal. " +
                  "Recibe monto, plazo en meses y tasa de interés anual en porcentaje.")]
     public async Task<string> CreateSimulationAsync(
         [Description("Monto del crédito en USD (entre 1 y 10,000,000)")] decimal amount,
         [Description("Plazo en meses (entre 1 y 360)")] int termMonths,
-        [Description("Tasa de interés anual en porcentaje, ej: 18.5 para 18.5%")] decimal annualRate)
+        [Description("Tasa de interés anual en porcentaje, ej: 18.5 para 18.5%")] decimal annualRate,
+        [Description("Tipo de cuota a simular. Debe ser FIXED (sistema francés) o GERMAN (sistema alemán). Por defecto es FIXED.")] string installmentType = "FIXED")
     {
         try
         {
@@ -44,8 +45,14 @@ public class SimulationPlugin
                 return $"No pude crear la simulación: el plazo debe estar entre 1 y 360 meses (recibí {termMonths}).";
             if (annualRate < 0 || annualRate > 100)
                 return $"No pude crear la simulación: la tasa anual debe estar entre 0% y 100% (recibí {annualRate}%).";
+            if (installmentType is not "FIXED" and not "GERMAN")
+                return "installmentType debe ser FIXED o GERMAN";
 
-            var schedule = AmortizationService.CalculateSchedule(amount, termMonths, annualRate);
+            using var scope = _scopeFactory.CreateScope();
+            var calculatorFactory = scope.ServiceProvider.GetRequiredService<IAmortizationCalculatorFactory>();
+            var calculator = calculatorFactory.GetCalculator(installmentType);
+
+            var schedule = calculator.Calculate(amount, termMonths, annualRate);
 
             var entity = new SimulationHistory
             {
@@ -53,12 +60,11 @@ public class SimulationPlugin
                 Amount = amount,
                 TermMonths = termMonths,
                 AnnualRate = annualRate,
-                InstallmentType = "FIXED",
+                InstallmentType = installmentType,
                 ScheduleJson = JsonSerializer.Serialize(schedule),
                 CreatedAt = DateTime.UtcNow
             };
 
-            using var scope = _scopeFactory.CreateScope();
             await GetRepo(scope).AddAsync(entity);
 
             var totalPaid = schedule.Sum(r => r.Payment);

@@ -17,16 +17,18 @@ public record CreateSimulationCommand(
 public class CreateSimulationHandler : IRequestHandler<CreateSimulationCommand, SimulationResponse>
 {
     private readonly ISimulationRepository _repository;
+    private readonly IAmortizationCalculatorFactory _calculatorFactory;
 
-    public CreateSimulationHandler(ISimulationRepository repository)
+    public CreateSimulationHandler(ISimulationRepository repository, IAmortizationCalculatorFactory calculatorFactory)
     {
         _repository = repository;
+        _calculatorFactory = calculatorFactory;
     }
 
     public async Task<SimulationResponse> Handle(CreateSimulationCommand request, CancellationToken ct)
     {
-        var schedule = AmortizationService.CalculateSchedule(
-            request.Amount, request.TermMonths, request.AnnualRate);
+        var calculator = _calculatorFactory.GetCalculator(request.InstallmentType);
+        var schedule = calculator.Calculate(request.Amount, request.TermMonths, request.AnnualRate);
 
         var entity = new SimulationHistory
         {

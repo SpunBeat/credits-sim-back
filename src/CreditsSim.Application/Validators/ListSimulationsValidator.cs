@@ -53,8 +53,8 @@ public class ListSimulationsValidator : AbstractValidator<ListSimulationsQuery>
         });
 
         RuleFor(x => x.InstallmentType)
-            .Must(t => string.IsNullOrWhiteSpace(t) || t is "FIXED")
-            .WithMessage("installmentType no soportado. Use: FIXED.");
+            .Must(t => string.IsNullOrWhiteSpace(t) || t is "FIXED" or "GERMAN")
+            .WithMessage("installmentType no soportado. Use: FIXED, GERMAN.");
 
         When(x => x.CreatedFrom.HasValue && x.CreatedTo.HasValue, () =>
         {

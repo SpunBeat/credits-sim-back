@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\CreditsSim.Application\CreditsSim.Application.csproj" />
+    <ProjectReference Include="..\..\src\CreditsSim.WebAPI\CreditsSim.WebAPI.csproj" />
   </ItemGroup>
 
 </Project>

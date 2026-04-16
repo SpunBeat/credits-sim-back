@@ -48,6 +48,19 @@ public class GlobalExceptionHandler : IExceptionHandler
                     JsonSerializer.Serialize(validationResponse, JsonOptions), ct);
                 break;
 
+            case NotSupportedException nse:
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                var notSupportedDetails = new ProblemDetails
+                {
+                    Type = "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                    Title = "Bad Request",
+                    Status = StatusCodes.Status400BadRequest,
+                    Detail = $"Operación no soportada: {nse.Message}"
+                };
+                await context.Response.WriteAsync(
+                    JsonSerializer.Serialize(notSupportedDetails, JsonOptions), ct);
+                break;
+
             default:
                 context.Response.StatusCode = StatusCodes.Status500InternalServerError;
                 var problemDetails = new ProblemDetails

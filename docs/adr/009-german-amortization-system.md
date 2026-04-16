@@ -1,48 +1,97 @@
-# ADR-009: Soporte para Sistema de Amortización Alemán
+# ADR-009: Soporte para Sistema de Amortizacion Aleman
 
-## Estado
-Aceptado
-
-## Extiende
-ADR-002: Motor de simulación y sistema francés
+**Estado:** Aceptado  
+**Fecha:** 2026-04-15  
+**Extiende:** ADR-002 (Motor de Amortizacion — Sistema Frances)
 
 ## Impacta
-- ADR-006: Integration con Semantic Kernel (tool `create_simulation` actualizado)
-- ADR-007: Validaciones (nuevos valores permitidos)
+
+- **ADR-002:** Se generaliza el motor de amortizacion a una interfaz (`IAmortizationCalculator`) con dos implementaciones.
+- **ADR-005 (OpenAPI y serializacion):** `installmentType` ahora se expone como enum tipado (`FIXED | GERMAN`) en el schema OpenAPI. El SDK del frontend debe regenerarse tras merge.
+- **ADR-006 (Semantic Kernel Assistant):** Tool `create_simulation` recibe parametro `installmentType`. Tools `get_simulation` y `compare_simulations` rotulan cuotas como "Cuota inicial / Cuota final" cuando el tipo es GERMAN.
+- **ADR-007 (Validaciones):** `CreateSimulationValidator` valida el enum via `IsInEnum()`; `ListSimulationsValidator` acepta "FIXED" o "GERMAN" en el query-string con `Enum.TryParse` (ignoreCase).
 
 ## No impacta
-- ADR-003: Paginación por cursores
-- ADR-004: Rate limiting
-- ADR-005: OpenAPI y serialización
-- ADR-008: Eliminación y ordenamiento dinámico
+
+- ADR-003: Paginacion por cursores.
+- ADR-004: Rate limiting.
+- ADR-008: Eliminacion y ordenamiento dinamico.
 
 ## Contexto
-Originalmente la plataforma se diseñó y construyó (ADR-002) asumiendo por defecto el cálculo de amortización mediante el **Sistema Francés** (cuota fija). Ha surgido la necesidad de ofrecer otro sistema de amortización que es preferido por muchos clientes debido a los menores costos financieros: el **Sistema Alemán** (cuotas de amortización decrecientes, con capital constante).
 
-Se requiere flexibilidad para calcular distintos cronogramas dentro de la misma arquitectura.
+ADR-002 construyo el motor asumiendo exclusivamente **Sistema Frances** (cuota fija). Los clientes preferien con frecuencia el **Sistema Aleman** (capital constante, cuotas decrecientes) por el menor costo financiero total: la porcion de interes se reduce mes a mes porque se aplica sobre un saldo decreciente.
 
-## Decisión
-En lugar de crear métodos o servicios sueltos, se adopta el uso del **Factory Pattern** con **Dependency Injection**:
-- `IAmortizationCalculator` define la interfaz base de cálculo.
-- `FrenchAmortizationCalculator` y `GermanAmortizationCalculator` encapsulan la lógica respectiva.
-- `AmortizationCalculatorFactory` provee el calculador adecuado basándose en el tipo ("FIXED" o "GERMAN").
+Se necesita que el simulador ofrezca ambos sistemas sin duplicar la infraestructura de persistencia, validacion ni serializacion.
 
-Se ha mantenido la estructura del `ScheduleRow` sin cambios, permitiendo reciclar DTOs y mecanismos de serialización y almacenamiento (`jsonb` de PostgreSQL).
+## Decision
 
-### Reglas del Sistema Alemán Implementadas
-- **Capital Constante**: $P_m = P / n$
-- **Interés Variable**: $I_m = S_m \times r$ (sobre el saldo pendiente de ese mes)
-- **Cuota Mensual Total**: $C_m = P_m + I_m + Seguro$
-- **Seguro**: $0.065\%$ mensual sobre saldo (igual que sistema francés).
-- *Nota:* En la iteración actual la tasa está cableada en constante.
+### Patron arquitectonico: Strategy + Factory
 
-### Casos Borde Contemplados
+- `IAmortizationCalculator` define la interfaz comun (`SupportedType`, `Calculate`).
+- `AmortizationCalculatorBase` centraliza `InsuranceRateMonthly` (evita duplicacion de la constante entre sistemas).
+- `FrenchAmortizationCalculator` y `GermanAmortizationCalculator` heredan y encapsulan la logica de cada sistema.
+- `AmortizationCalculatorFactory` resuelve el calculador correcto segun el `InstallmentType` recibido.
 
-| Caso Borde | Comportamiento |
-| --- | --- |
-| Último Mes | Ajuste del capital amortizado al saldo exactamente pendiente para evitar desvíos (drift) por redondeos acumulados. |
-| Tasa de interés = 0% | El cálculo del interés se anula independientemente del saldo, quedando la cuota compuesta solo de su respectiva porción de capital constante ($P / n$) y el seguro mensual calculado sobre el saldo. |
+La entidad `SimulationHistory` persiste `InstallmentType` como string (`varchar(20)`) por compatibilidad hacia atras — la conversion a enum se hace en los handlers (boundary Application).
+
+### Tipo fuertemente tipado
+
+`InstallmentType` es un enum C# (`FIXED`, `GERMAN`) expuesto como string en JSON via `JsonStringEnumConverter` (ya configurado globalmente en `Program.cs`). El schema OpenAPI refleja `"enum": ["FIXED", "GERMAN"]` automaticamente.
+
+Consecuencia: valores invalidos en JSON (ej. `"german"`, `null`, desconocidos) son rechazados por el deserializer con 400 antes de llegar al validator. El factory y los validators dejaron de hacer comparacion de strings case-insensitive.
+
+### Reglas del Sistema Aleman
+
+- **Capital constante:** `P_m = round(P / n, 2)`
+- **Interes variable:** `I_m = Saldo × r_mensual` (sobre saldo al inicio del periodo)
+- **Cuota total:** `C_m = P_m + I_m + Seguro_m` (decrece periodo a periodo)
+- **Seguro:** `0.065%` mensual sobre saldo (mismo criterio que Frances — heredado de `AmortizationCalculatorBase`)
+- **Ultimo periodo:** `P_m = saldo pendiente` para absorber el drift de redondeo. El saldo final siempre cierra en 0.
+
+### Casos borde
+
+| Caso | Comportamiento |
+|---|---|
+| Plazo = 1 | Cuota unica = monto + interes + seguro; saldo final = 0. |
+| Tasa = 0% | Interes = 0 en todos los periodos; la cuota decrece solo por el seguro sobre saldo decreciente. |
+| Monto no divisible entre plazo | El capital redondeado a 2 decimales genera drift; el ultimo periodo ajusta `principal = saldo` para cerrar en 0. |
+
+### Validaciones
+
+Las reglas de negocio (monto, plazo, tasa) son identicas para ambos sistemas — el ADR no diferencia limites porque ambos sistemas operan sobre el mismo rango economico soportado por la plataforma.
+
+## Alternativas consideradas
+
+- **Switch en el handler:** Mas simple, menos clases.  
+  Descartado: viola Open/Closed Principle. Cada nuevo sistema obligaria a tocar el handler.
+
+- **`Dictionary<string, Func<...>>` estatico:** Menos overhead de DI.  
+  Descartado: dificulta la inyeccion de dependencias si mas adelante los calculadores necesitan configuracion (`IOptions<AmortizationSettings>`), logging o telemetria.
+
+- **Keyed services (.NET 8):** Elimina el factory completamente.  
+  Descartado por ahora: el factory ya existe y funciona. Registrado como deuda tecnica (ver `DependencyInjection.cs` — TODO keyed services).
+
+## Consecuencias para el frontend
+
+- **Regenerar SDK** tras merge:
+  ```bash
+  curl http://localhost:5087/swagger/v1/swagger.json -o swagger.json
+  npm run generate:api:file
+  ```
+- **`SimulatorComponent`, `HistoryComponent`, `ComparatorComponent`** deben mostrar **"Cuota inicial / Cuota final"** cuando `installmentType === 'GERMAN'`, no "Cuota mensual" (esa metrica es inexacta para cuotas decrecientes).
+- Opcionalmente: grafico de evolucion de cuota para GERMAN (ayuda al usuario a visualizar que la cuota baja con el tiempo).
+- Abrir ticket de frontend como follow-up.
 
 ## Consecuencias
-- **Positivas**: La plataforma soporta ahora los dos esquemas más populares fácilmente; el diseño Strategy/Factory permite añadir a futuro nuevos sistemas sin modificar lógica existente (Open/Closed Principle).
-- **Negativas**: Aumenta ligeramente la complejidad del Handler al requerir dependencia del Factory, requiriendo su actualización respectiva en los unit tests si existiesen.
+
+- (+) Dos esquemas de amortizacion mas populares soportados sin duplicar infraestructura.
+- (+) Strategy + Factory permite agregar sistemas futuros (Americano, mixto) sin modificar codigo existente (Open/Closed).
+- (+) Enum C# + `JsonStringEnumConverter` centraliza valores validos: el contrato OpenAPI refleja automaticamente los sistemas soportados.
+- (+) `AmortizationCalculatorBase` elimina la duplicacion de `InsuranceRateMonthly` que habria crecido a 3+ copias al sumar sistemas.
+- (-) `AmortizationCalculatorFactory` lanza `NotSupportedException` si el enum esta fuera de rango; se mapea a 400 en `GlobalExceptionHandler`.
+- (-) El seguro sigue cableado en constante (`InsuranceRateMonthly`). TODO: migrar a `IOptions<AmortizationSettings>`.
+- (-) `SimulationHistory.InstallmentType` sigue siendo `string` en la BD. Cambio futuro requeriria migracion.
+
+## Tests
+
+Se agregan tests en `CreditsSim.Tests/Calculators/` cubriendo invariantes matematicas (saldo final = 0, Σ capital = monto, cuotas decrecientes), cronograma conocido fila a fila para German, y resolucion del factory para FIXED/GERMAN/invalido. Los tests son parte del contrato de esta decision arquitectonica.

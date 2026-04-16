@@ -1,3 +1,4 @@
+using CreditsSim.Application.DTOs;
 using CreditsSim.Application.Features.Simulations.Queries;
 using FluentValidation;
 
@@ -52,9 +53,11 @@ public class ListSimulationsValidator : AbstractValidator<ListSimulationsQuery>
                 .WithMessage("termMonths debe estar entre 1 y 360.");
         });
 
+        // Query-strings son case-insensitive por convencion HTTP: se acepta "GERMAN" o "german".
+        // Enum.TryParse con ignoreCase=true centraliza los valores validos en InstallmentType.
         RuleFor(x => x.InstallmentType)
-            .Must(t => string.IsNullOrWhiteSpace(t) || t is "FIXED" or "GERMAN")
-            .WithMessage("installmentType no soportado. Use: FIXED, GERMAN.");
+            .Must(t => string.IsNullOrWhiteSpace(t) || Enum.TryParse<InstallmentType>(t, ignoreCase: true, out _))
+            .WithMessage($"installmentType no soportado. Use: {string.Join(", ", Enum.GetNames<InstallmentType>())}.");
 
         When(x => x.CreatedFrom.HasValue && x.CreatedTo.HasValue, () =>
         {

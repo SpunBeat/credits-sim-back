@@ -1,10 +1,10 @@
-using CreditsSim.Application.Services;
+using CreditsSim.Application.DTOs;
 
 namespace CreditsSim.Application.Services;
 
 public interface IAmortizationCalculatorFactory
 {
-    IAmortizationCalculator GetCalculator(string type);
+    IAmortizationCalculator GetCalculator(InstallmentType type);
 }
 
 public class AmortizationCalculatorFactory : IAmortizationCalculatorFactory
@@ -16,12 +16,12 @@ public class AmortizationCalculatorFactory : IAmortizationCalculatorFactory
         _calculators = calculators;
     }
 
-    public IAmortizationCalculator GetCalculator(string type)
+    public IAmortizationCalculator GetCalculator(InstallmentType type)
     {
-        var calculator = _calculators.FirstOrDefault(c => string.Equals(c.SupportedType, type, StringComparison.OrdinalIgnoreCase));
+        var calculator = _calculators.FirstOrDefault(c => c.SupportedType == type);
         if (calculator == null)
             throw new NotSupportedException($"El tipo de cuota '{type}' no está soportado.");
-            
+
         return calculator;
     }
 }

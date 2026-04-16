@@ -29,9 +29,17 @@ public class GetSimulationHandler : IRequestHandler<GetSimulationQuery, Simulati
             Amount = entity.Amount,
             TermMonths = entity.TermMonths,
             AnnualRate = entity.AnnualRate,
-            InstallmentType = entity.InstallmentType,
+            InstallmentType = ParseInstallmentType(entity.InstallmentType),
             Schedule = schedule,
             CreatedAt = entity.CreatedAt
         };
     }
+
+    // La entidad persiste InstallmentType como string por compatibilidad historica.
+    // Parseamos al enum en el boundary de application. Si el valor persistido es
+    // desconocido, fallback a FIXED (default original del sistema).
+    private static InstallmentType ParseInstallmentType(string value) =>
+        Enum.TryParse<InstallmentType>(value, ignoreCase: true, out var parsed)
+            ? parsed
+            : InstallmentType.FIXED;
 }

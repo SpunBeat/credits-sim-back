@@ -28,7 +28,9 @@ builder.Services.AddControllers(options =>
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        // Enums como string case-sensitive: "GERMAN" aceptado, "german" rechazado con 400.
+        // Esto honra el contrato OpenAPI declarado y evita divergencia entre capas.
+        options.JsonSerializerOptions.Converters.Add(new StrictEnumConverterFactory());
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
 

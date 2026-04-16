@@ -146,7 +146,7 @@ public class SimulationsController : ControllerBase
             termMonths,
             annualRateMin,
             annualRateMax,
-            string.IsNullOrWhiteSpace(installmentType) ? null : installmentType.Trim(),
+            string.IsNullOrWhiteSpace(installmentType) ? null : installmentType.Trim().ToUpperInvariant(),
             createdFrom,
             createdTo);
         var result = await _mediator.Send(query, ct);

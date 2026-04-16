@@ -19,7 +19,7 @@ public class CreateSimulationValidator : AbstractValidator<CreateSimulationComma
             .LessThanOrEqualTo(100).WithMessage("La tasa anual no puede exceder 100%.");
 
         RuleFor(x => x.InstallmentType)
-            .Must(t => t is "FIXED")
-            .WithMessage("Tipo de cuota no soportado. Use: FIXED.");
+            .Must(t => t is "FIXED" or "GERMAN")
+            .WithMessage("Tipo de cuota no soportado. Use: FIXED, GERMAN.");
     }
 }

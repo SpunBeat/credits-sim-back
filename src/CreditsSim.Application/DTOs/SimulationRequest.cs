@@ -14,6 +14,6 @@ public record SimulationRequest
     /// <summary>Tasa de interés anual expresada como porcentaje (ej: 18.5 para 18.5%). Rango: 0 a 100.</summary>
     public decimal AnnualRate { get; init; }
 
-    /// <summary>Tipo de cuota. Valores soportados: FIXED (Sistema Francés).</summary>
+    /// <summary>Tipo de cuota. Valores soportados: FIXED (Sistema Francés), GERMAN (Sistema Alemán).</summary>
     public string InstallmentType { get; init; } = "FIXED";
 }

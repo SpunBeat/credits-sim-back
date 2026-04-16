@@ -15,6 +15,8 @@ public static class DependencyInjection
         services.AddValidatorsFromAssembly(assembly);
         services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
 
+        services.AddScoped<IAmortizationCalculator, FrenchAmortizationCalculator>();
+        services.AddScoped<IAmortizationCalculator, GermanAmortizationCalculator>();
+        services.AddScoped<IAmortizationCalculatorFactory, AmortizationCalculatorFactory>();
+
         return services;
-    }
-}
